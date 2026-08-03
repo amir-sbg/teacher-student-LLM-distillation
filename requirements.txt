@@ -1,0 +1,10 @@
+torch>=2.2
+transformers>=4.44
+datasets>=2.20
+accelerate>=0.33
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.8
+tqdm>=4.66
+jupyter>=1.0
+ipykernel>=6.29
