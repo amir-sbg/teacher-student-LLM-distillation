@@ -60,7 +60,7 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 Generated files are kept out of git:
 
 - `artifacts/prepared/` contains sampled JSONL splits.
-- `artifacts/teacher_cache/` contains compressed top-k teacher logits.
+- `artifacts/teacher_cache/` contains compressed top-k teacher logits and a small cache manifest.
 - `checkpoints/student/` contains the distilled student model.
 - `reports/` contains training curves, metrics, and qualitative comparisons.
 
