@@ -64,6 +64,16 @@ Generated files are kept out of git:
 - `checkpoints/student/` contains the distilled student model.
 - `reports/` contains training curves, metrics, generation comparisons, and a compact review CSV for held-out outputs.
 
+## Cache audit
+
+Before training the student, the teacher cache can be checked without loading either model:
+
+```bash
+python scripts/audit_teacher_cache.py --cache-dir artifacts/teacher_cache --output reports/cache_audit.json
+```
+
+The audit reports cached row counts, average sequence length, average supervised response tokens, top-k width, and empty-supervision warnings. It is a small sanity check that catches common pipeline mistakes before spending time on student training.
+
 ## Notes
 
 The notebooks default to small runs because teacher forward passes are the expensive part of the workflow. For a larger experiment, increase `train_size` in `00_data_preparation.ipynb`, then increase `max_train_records` in `01_teacher_cache.ipynb`. The student notebook can then run longer by changing epochs, batch size, accumulation steps, temperature, and `distill_alpha`.
