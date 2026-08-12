@@ -62,7 +62,7 @@ Generated files are kept out of git:
 - `artifacts/prepared/` contains sampled JSONL splits.
 - `artifacts/teacher_cache/` contains compressed top-k teacher logits and a small cache manifest.
 - `checkpoints/student/` contains the distilled student model.
-- `reports/` contains training curves, metrics, generation comparisons, and a compact review CSV for held-out outputs.
+- `reports/` contains training curves, metrics, generation comparisons, cache audits, diagnostics, and compact review CSVs for held-out outputs.
 
 ## Cache audit
 
