@@ -9,14 +9,20 @@ from statistics import mean
 def read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    with path.open() as handle:
+    with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
 
 def summarize_split(path: Path) -> dict:
     rows = read_jsonl(path)
     if not rows:
-        return {"rows": 0, "avg_tokens": 0.0, "avg_supervised_tokens": 0.0, "top_k": 0}
+        return {
+            "rows": 0,
+            "avg_tokens": 0.0,
+            "avg_supervised_tokens": 0.0,
+            "top_k": 0,
+            "empty_supervision": 0,
+        }
 
     token_lengths = [len(row.get("input_ids", [])) for row in rows]
     supervised = [sum(row.get("loss_mask", [])) for row in rows]
@@ -36,7 +42,7 @@ def summarize_split(path: Path) -> dict:
 
 def audit_cache(cache_dir: Path) -> dict:
     manifest_path = cache_dir / "teacher_cache_manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     splits = {
         split: summarize_split(cache_dir / f"{split}_teacher_topk.jsonl")
         for split in ("train", "validation")
@@ -60,10 +66,9 @@ def main() -> None:
     text = json.dumps(report, indent=2)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(text + "\n")
+        args.output.write_text(text + "\n", encoding="utf-8")
     print(text)
 
 
 if __name__ == "__main__":
     main()
-
