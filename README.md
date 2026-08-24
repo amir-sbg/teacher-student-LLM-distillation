@@ -77,7 +77,7 @@ Before training the student, the teacher cache can be checked without loading ei
 python scripts/audit_teacher_cache.py --cache-dir artifacts/teacher_cache --output reports/cache_audit.json
 ```
 
-The audit reports cached row counts, average sequence length, average supervised response tokens, top-k width, and empty-supervision warnings. It is a small sanity check that catches common pipeline mistakes before spending time on student training.
+The audit reports cached row counts, average sequence length, average supervised response tokens, top-k width, missing teacher logits, loss-mask length mismatches, and empty-supervision warnings. It is a small sanity check that catches common pipeline mistakes before spending time on student training.
 
 ## Notes
 
