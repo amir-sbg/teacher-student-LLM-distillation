@@ -32,6 +32,9 @@ notebooks/
 ├── 03_evaluation.ipynb
 ├── 04_inference_demo.ipynb
 └── 05_distillation_math.ipynb
+scripts/
+├── audit_teacher_cache.py
+└── distillation_losses.py
 ```
 
 ## Setup
@@ -54,6 +57,8 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 ```
 
 `T` is the temperature used to soften the teacher distribution, `α` controls how much the student follows the teacher, and the hard cross-entropy term keeps the model grounded in the original response text. The teacher cache stores only top-k logits per response position, which preserves useful dark knowledge while keeping storage manageable.
+
+The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, hard CE, and the blended loss used by the student notebook.
 
 ## Outputs
 

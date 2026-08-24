@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+import torch
+import torch.nn.functional as F
+
+
+def masked_mean(values: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+    if mask is None:
+        return values.mean()
+    if mask.shape != values.shape:
+        raise ValueError("mask must have the same shape as values")
+    weights = mask.to(dtype=values.dtype)
+    denominator = weights.sum().clamp_min(1.0)
+    return (values * weights).sum() / denominator
+
+
+def temperature_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    scaled_student = student_logits / temperature
+    scaled_teacher = teacher_logits / temperature
+    token_kl = F.kl_div(
+        F.log_softmax(scaled_student, dim=-1),
+        F.softmax(scaled_teacher, dim=-1),
+        reduction="none",
+    ).sum(dim=-1)
+    return masked_mean(token_kl, mask) * temperature**2
+
+
+def hard_ce_loss(
+    student_logits: torch.Tensor,
+    labels: torch.Tensor,
+    ignore_index: int = -100,
+) -> torch.Tensor:
+    if student_logits.ndim != 3:
+        raise ValueError("student_logits must have shape (batch, sequence, vocab)")
+    if labels.shape != student_logits.shape[:2]:
+        raise ValueError("labels must have shape (batch, sequence)")
+    return F.cross_entropy(
+        student_logits.reshape(-1, student_logits.shape[-1]),
+        labels.reshape(-1),
+        ignore_index=ignore_index,
+    )
+
+
+def blended_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float = 0.7,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    ignore_index: int = -100,
+) -> dict[str, torch.Tensor]:
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if mask is None:
+        mask = labels.ne(ignore_index)
+
+    kl = temperature_kl_loss(
+        student_logits,
+        teacher_logits,
+        temperature=temperature,
+        mask=mask,
+    )
+    ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
+    loss = alpha * kl + (1.0 - alpha) * ce
+    return {
+        "loss": loss,
+        "kl_loss": kl,
+        "ce_loss": ce,
+    }
