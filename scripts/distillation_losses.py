@@ -37,6 +37,36 @@ def temperature_kl_loss(
     return masked_mean(token_kl, mask) * temperature**2
 
 
+def topk_temperature_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_topk_indices: torch.Tensor,
+    teacher_topk_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if student_logits.ndim != 3:
+        raise ValueError("student_logits must have shape (batch, sequence, vocab)")
+    if teacher_topk_indices.shape != teacher_topk_logits.shape:
+        raise ValueError("teacher top-k indices and logits must have the same shape")
+    if teacher_topk_indices.ndim != 3:
+        raise ValueError("teacher top-k tensors must have shape (batch, sequence, top_k)")
+    if teacher_topk_indices.shape[:2] != student_logits.shape[:2]:
+        raise ValueError("teacher top-k tensors must match the student batch and sequence shape")
+    if teacher_topk_indices.numel() == 0:
+        raise ValueError("teacher top-k tensors must not be empty")
+    if teacher_topk_indices.min().item() < 0 or teacher_topk_indices.max().item() >= student_logits.shape[-1]:
+        raise ValueError("teacher_topk_indices contain ids outside the student vocabulary")
+
+    gathered_student = torch.gather(student_logits, dim=-1, index=teacher_topk_indices.long())
+    teacher_distribution = F.softmax(teacher_topk_logits / temperature, dim=-1)
+    student_log_distribution = F.log_softmax(gathered_student / temperature, dim=-1)
+    teacher_log_distribution = torch.log(teacher_distribution.clamp_min(1e-12))
+    token_kl = (teacher_distribution * (teacher_log_distribution - student_log_distribution)).sum(dim=-1)
+    return masked_mean(token_kl, mask) * temperature**2
+
+
 def hard_ce_loss(
     student_logits: torch.Tensor,
     labels: torch.Tensor,
@@ -77,6 +107,36 @@ def blended_distillation_loss(
     loss = alpha * kl + (1.0 - alpha) * ce
     return {
         "loss": loss,
+        "kl_loss": kl,
+        "ce_loss": ce,
+    }
+
+
+def blended_topk_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_topk_indices: torch.Tensor,
+    teacher_topk_logits: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float = 0.7,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    ignore_index: int = -100,
+) -> dict[str, torch.Tensor]:
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if mask is None:
+        mask = labels.ne(ignore_index)
+
+    kl = topk_temperature_kl_loss(
+        student_logits,
+        teacher_topk_indices,
+        teacher_topk_logits,
+        temperature=temperature,
+        mask=mask,
+    )
+    ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
+    return {
+        "loss": alpha * kl + (1.0 - alpha) * ce,
         "kl_loss": kl,
         "ce_loss": ce,
     }

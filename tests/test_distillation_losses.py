@@ -3,8 +3,10 @@ import torch
 
 from scripts.distillation_losses import (
     blended_distillation_loss,
+    blended_topk_distillation_loss,
     hard_ce_loss,
     masked_mean,
+    topk_temperature_kl_loss,
     temperature_kl_loss,
 )
 
@@ -66,3 +68,50 @@ def test_blended_loss_rejects_bad_alpha() -> None:
 
     with pytest.raises(ValueError, match="alpha"):
         blended_distillation_loss(logits, logits, labels, alpha=1.2)
+
+
+def test_topk_kl_is_zero_when_student_matches_teacher_support() -> None:
+    student = torch.tensor([[[2.0, 0.5, -1.0, 1.0], [0.1, 3.0, 0.0, -0.5]]])
+    indices = torch.tensor([[[0, 3], [1, 2]]])
+    teacher_logits = torch.gather(student, dim=-1, index=indices)
+    mask = torch.tensor([[1, 1]], dtype=torch.bool)
+
+    loss = topk_temperature_kl_loss(
+        student,
+        indices,
+        teacher_logits,
+        temperature=2.0,
+        mask=mask,
+    )
+
+    assert loss.item() == pytest.approx(0.0, abs=2e-7)
+
+
+def test_topk_blended_loss_returns_components() -> None:
+    student = torch.tensor([[[2.0, 0.2, 0.0], [0.1, 1.5, 0.0]]])
+    indices = torch.tensor([[[0, 1], [1, 2]]])
+    teacher_logits = torch.tensor([[[1.6, 0.2], [1.7, -0.2]]])
+    labels = torch.tensor([[-100, 1]])
+
+    report = blended_topk_distillation_loss(
+        student,
+        indices,
+        teacher_logits,
+        labels,
+        alpha=0.5,
+        temperature=2.5,
+    )
+
+    assert set(report) == {"loss", "kl_loss", "ce_loss"}
+    assert report["loss"].item() == pytest.approx(
+        0.5 * report["kl_loss"].item() + 0.5 * report["ce_loss"].item()
+    )
+
+
+def test_topk_kl_rejects_out_of_range_indices() -> None:
+    student = torch.zeros(1, 1, 3)
+    indices = torch.tensor([[[0, 4]]])
+    teacher_logits = torch.zeros(1, 1, 2)
+
+    with pytest.raises(ValueError, match="outside"):
+        topk_temperature_kl_loss(student, indices, teacher_logits)
