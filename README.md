@@ -34,6 +34,7 @@ notebooks/
 └── 05_distillation_math.ipynb
 scripts/
 ├── audit_teacher_cache.py
+├── generation_metrics.py
 └── distillation_losses.py
 ```
 
@@ -58,7 +59,7 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 
 `T` is the temperature used to soften the teacher distribution, `α` controls how much the student follows the teacher, and the hard cross-entropy term keeps the model grounded in the original response text. The teacher cache stores only top-k logits per response position, which preserves useful dark knowledge while keeping storage manageable.
 
-The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, hard CE, and the blended loss used by the student notebook.
+The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, top-k cache KL, hard CE, and the blended loss used by the student notebook.
 
 ## Outputs
 
@@ -78,6 +79,18 @@ python scripts/audit_teacher_cache.py --cache-dir artifacts/teacher_cache --outp
 ```
 
 The audit reports cached row counts, average sequence length, average supervised response tokens, top-k width, missing teacher logits, loss-mask length mismatches, and empty-supervision warnings. It is a small sanity check that catches common pipeline mistakes before spending time on student training.
+
+## Generation metrics
+
+Held-out teacher/student generations can be summarized without loading either model:
+
+```bash
+python scripts/generation_metrics.py \
+  --input reports/generation_comparisons.jsonl \
+  --output reports/generation_metrics.json
+```
+
+The report tracks length ratio, unigram/bigram overlap, distinct-n, repetition rate, and optional reference overlap when a target response is available.
 
 ## Notes
 
