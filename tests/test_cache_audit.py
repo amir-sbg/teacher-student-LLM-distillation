@@ -44,6 +44,9 @@ def test_summarize_split_reports_cache_shape_issues(tmp_path) -> None:
     assert report["missing_teacher_topk"] == 1
     assert report["loss_mask_length_mismatches"] == 1
     assert report["topk_shape_mismatches"] == 1
+    assert report["cached_teacher_positions"] == 3
+    assert report["supervised_token_coverage"] == 0.75
+    assert report["estimated_topk_cache_mb"] >= 0.0
 
 
 def test_audit_cache_warns_about_malformed_splits(tmp_path) -> None:
@@ -75,6 +78,7 @@ def test_audit_cache_warns_about_malformed_splits(tmp_path) -> None:
     assert any("loss masks" in warning for warning in report["warnings"])
     assert any("without teacher top-k" in warning for warning in report["warnings"])
     assert any("non-finite" in warning for warning in report["warnings"])
+    assert any("partial teacher-token coverage" in warning for warning in report["warnings"])
 
 
 def test_audit_cache_warns_when_logits_are_missing(tmp_path) -> None:

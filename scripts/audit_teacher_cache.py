@@ -21,6 +21,7 @@ def summarize_split(path: Path) -> dict:
             "rows": 0,
             "avg_tokens": 0.0,
             "avg_supervised_tokens": 0.0,
+            "supervised_tokens": 0,
             "top_k": 0,
             "min_top_k": 0,
             "max_top_k": 0,
@@ -30,11 +31,17 @@ def summarize_split(path: Path) -> dict:
             "topk_shape_mismatches": 0,
             "nonfinite_teacher_logits": 0,
             "loss_mask_length_mismatches": 0,
+            "cached_teacher_positions": 0,
+            "supervised_token_coverage": 0.0,
+            "estimated_topk_cache_mb": 0.0,
         }
 
     token_lengths = [len(row.get("input_ids", [])) for row in rows]
     supervised = [sum(row.get("loss_mask", [])) for row in rows]
+    supervised_total = sum(supervised)
     top_k_values = []
+    cached_teacher_positions = 0
+    estimated_cache_bytes = 0
     missing_teacher_topk = 0
     missing_teacher_logits = 0
     topk_shape_mismatches = 0
@@ -53,16 +60,19 @@ def summarize_split(path: Path) -> dict:
             missing_teacher_logits += 1
         if teacher_indices and teacher_logits and len(teacher_indices) != len(teacher_logits):
             topk_shape_mismatches += 1
+        cached_teacher_positions += len(teacher_indices)
         for indices, logits in zip(teacher_indices, teacher_logits):
             if len(indices) != len(logits):
                 topk_shape_mismatches += 1
             if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in logits):
                 nonfinite_teacher_logits += 1
+            estimated_cache_bytes += 4 * (len(indices) + len(logits))
         top_k_values.extend(len(indices) for indices in teacher_indices if indices)
     return {
         "rows": len(rows),
         "avg_tokens": round(mean(token_lengths), 2),
         "avg_supervised_tokens": round(mean(supervised), 2),
+        "supervised_tokens": int(supervised_total),
         "top_k": int(max(top_k_values)) if top_k_values else 0,
         "min_top_k": int(min(top_k_values)) if top_k_values else 0,
         "max_top_k": int(max(top_k_values)) if top_k_values else 0,
@@ -72,6 +82,14 @@ def summarize_split(path: Path) -> dict:
         "topk_shape_mismatches": topk_shape_mismatches,
         "nonfinite_teacher_logits": nonfinite_teacher_logits,
         "loss_mask_length_mismatches": length_mismatches,
+        "cached_teacher_positions": cached_teacher_positions,
+        "supervised_token_coverage": round(
+            cached_teacher_positions / supervised_total,
+            4,
+        )
+        if supervised_total
+        else 0.0,
+        "estimated_topk_cache_mb": round(estimated_cache_bytes / (1024 * 1024), 4),
     }
 
 
@@ -100,6 +118,8 @@ def audit_cache(cache_dir: Path) -> dict:
             warnings.append(f"{split} has loss masks with a different length than input_ids")
         if stats["min_top_k"] and stats["min_top_k"] != stats["max_top_k"]:
             warnings.append(f"{split} has inconsistent teacher top-k widths")
+        if stats["supervised_tokens"] > 0 and stats["supervised_token_coverage"] < 0.95:
+            warnings.append(f"{split} has partial teacher-token coverage")
     return {"manifest": manifest, "splits": splits, "warnings": warnings}
 
 
