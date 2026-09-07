@@ -40,6 +40,14 @@ def overlap_f1(left: Iterable, right: Iterable) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
+def set_coverage(left: Iterable, right: Iterable) -> float:
+    left_set = set(left)
+    right_set = set(right)
+    if not left_set:
+        return 1.0
+    return len(left_set & right_set) / len(left_set)
+
+
 def distinct_n(tokens: list[str], n: int) -> float:
     grams = ngram_set(tokens, n)
     total = max(len(tokens) - n + 1, 0)
@@ -66,12 +74,23 @@ def generation_pair_metrics(
     report: dict[str, float | int] = {
         "teacher_tokens": len(teacher_tokens),
         "student_tokens": len(student_tokens),
+        "student_length_delta": len(student_tokens) - len(teacher_tokens),
         "length_ratio": len(student_tokens) / max(len(teacher_tokens), 1),
         "teacher_student_unigram_f1": overlap_f1(student_unigrams, teacher_unigrams),
         "teacher_student_bigram_f1": overlap_f1(
             ngram_set(student_tokens, 2),
             ngram_set(teacher_tokens, 2),
         ),
+        "student_unigram_teacher_coverage": set_coverage(
+            student_unigrams,
+            teacher_unigrams,
+        ),
+        "teacher_unigram_student_coverage": set_coverage(
+            teacher_unigrams,
+            student_unigrams,
+        ),
+        "student_novel_unigram_rate": 1.0
+        - set_coverage(student_unigrams, teacher_unigrams),
         "student_distinct_1": distinct_n(student_tokens, 1),
         "student_distinct_2": distinct_n(student_tokens, 2),
         "student_repetition_rate": repetition_rate(student_tokens),

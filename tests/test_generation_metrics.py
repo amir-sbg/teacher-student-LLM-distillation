@@ -6,6 +6,7 @@ from scripts.generation_metrics import (
     distinct_n,
     generation_pair_metrics,
     load_generation_rows,
+    set_coverage,
     summarize_generation_rows,
     tokenize,
 )
@@ -21,6 +22,11 @@ def test_distinct_n_tracks_repetition() -> None:
     assert distinct_n(tokens, 1) == pytest.approx(1 / 3)
 
 
+def test_set_coverage_handles_empty_left_side() -> None:
+    assert set_coverage([], ["teacher"]) == 1.0
+    assert set_coverage(["a", "b"], ["b", "c"]) == 0.5
+
+
 def test_generation_pair_metrics_compare_teacher_and_student() -> None:
     metrics = generation_pair_metrics(
         teacher_text="The model learns from soft labels.",
@@ -29,7 +35,10 @@ def test_generation_pair_metrics_compare_teacher_and_student() -> None:
     )
 
     assert metrics["student_tokens"] == 5
+    assert metrics["student_length_delta"] == -1
     assert metrics["teacher_student_unigram_f1"] > 0.5
+    assert 0 <= metrics["student_novel_unigram_rate"] <= 1
+    assert metrics["student_unigram_teacher_coverage"] > 0.5
     assert "student_reference_unigram_f1" in metrics
 
 
