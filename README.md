@@ -61,6 +61,8 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 
 The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, top-k cache KL, hard CE, and the blended loss used by the student notebook.
 
+The same helper includes a small linear schedule for `α` and `T`. A typical run can begin with more hard-label grounding, then increase the teacher KL weight once the student is stable.
+
 ## Outputs
 
 Generated files are kept out of git:

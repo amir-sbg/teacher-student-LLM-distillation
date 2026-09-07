@@ -4,6 +4,39 @@ import torch
 import torch.nn.functional as F
 
 
+def distillation_schedule(
+    step: int,
+    total_steps: int,
+    *,
+    start_alpha: float = 0.45,
+    end_alpha: float = 0.75,
+    start_temperature: float = 3.0,
+    end_temperature: float = 2.0,
+    warmup_steps: int = 0,
+) -> dict[str, float]:
+    if total_steps < 1:
+        raise ValueError("total_steps must be at least 1")
+    if step < 0:
+        raise ValueError("step must be non-negative")
+    if warmup_steps < 0:
+        raise ValueError("warmup_steps must not be negative")
+    if not 0 <= start_alpha <= 1 or not 0 <= end_alpha <= 1:
+        raise ValueError("alpha values must be between 0 and 1")
+    if start_temperature <= 0 or end_temperature <= 0:
+        raise ValueError("temperature values must be positive")
+
+    clipped_step = min(step, total_steps - 1)
+    if clipped_step < warmup_steps:
+        progress = 0.0
+    else:
+        denominator = max(total_steps - warmup_steps - 1, 1)
+        progress = min((clipped_step - warmup_steps) / denominator, 1.0)
+    return {
+        "alpha": _lerp(start_alpha, end_alpha, progress),
+        "temperature": _lerp(start_temperature, end_temperature, progress),
+    }
+
+
 def masked_mean(values: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
     if mask is None:
         return values.mean()
@@ -140,3 +173,7 @@ def blended_topk_distillation_loss(
         "kl_loss": kl,
         "ce_loss": ce,
     }
+
+
+def _lerp(start: float, end: float, weight: float) -> float:
+    return float(start + (end - start) * weight)

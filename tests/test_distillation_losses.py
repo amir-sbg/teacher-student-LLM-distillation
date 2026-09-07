@@ -4,6 +4,7 @@ import torch
 from scripts.distillation_losses import (
     blended_distillation_loss,
     blended_topk_distillation_loss,
+    distillation_schedule,
     hard_ce_loss,
     masked_mean,
     topk_temperature_kl_loss,
@@ -16,6 +17,37 @@ def test_masked_mean_uses_only_supervised_tokens() -> None:
     mask = torch.tensor([[1, 0], [0, 1]], dtype=torch.bool)
 
     assert masked_mean(values, mask) == torch.tensor(4.0)
+
+
+def test_distillation_schedule_ramps_teacher_weight() -> None:
+    first = distillation_schedule(
+        0,
+        total_steps=5,
+        start_alpha=0.4,
+        end_alpha=0.8,
+        start_temperature=4.0,
+        end_temperature=2.0,
+    )
+    last = distillation_schedule(
+        4,
+        total_steps=5,
+        start_alpha=0.4,
+        end_alpha=0.8,
+        start_temperature=4.0,
+        end_temperature=2.0,
+    )
+
+    assert first == {"alpha": 0.4, "temperature": 4.0}
+    assert last == {"alpha": 0.8, "temperature": 2.0}
+
+
+def test_distillation_schedule_respects_warmup() -> None:
+    warmup = distillation_schedule(1, total_steps=6, warmup_steps=2)
+    after_warmup = distillation_schedule(5, total_steps=6, warmup_steps=2)
+
+    assert warmup["alpha"] == 0.45
+    assert warmup["temperature"] == 3.0
+    assert after_warmup["alpha"] == 0.75
 
 
 def test_temperature_kl_is_zero_for_matching_logits() -> None:
