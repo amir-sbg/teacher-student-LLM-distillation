@@ -3,10 +3,12 @@ import torch
 
 from scripts.distillation_losses import (
     blended_distillation_loss,
+    blended_js_distillation_loss,
     blended_topk_distillation_loss,
     distillation_schedule,
     hard_ce_loss,
     masked_mean,
+    temperature_js_loss,
     topk_temperature_kl_loss,
     temperature_kl_loss,
 )
@@ -59,6 +61,18 @@ def test_temperature_kl_is_zero_for_matching_logits() -> None:
     assert loss.item() == pytest.approx(0.0, abs=2e-7)
 
 
+def test_temperature_js_is_symmetric_and_bounded() -> None:
+    student = torch.tensor([[[2.0, 0.0, -1.0], [0.1, 0.2, 0.3]]])
+    teacher = torch.tensor([[[0.0, 2.0, -1.0], [0.3, 0.2, 0.1]]])
+
+    forward = temperature_js_loss(student, teacher, temperature=2.0)
+    backward = temperature_js_loss(teacher, student, temperature=2.0)
+
+    assert forward.item() > 0.0
+    assert forward.item() == pytest.approx(backward.item())
+    assert forward.item() < temperature_kl_loss(student, teacher, temperature=2.0).item()
+
+
 def test_hard_ce_ignores_prompt_positions() -> None:
     logits = torch.tensor(
         [
@@ -100,6 +114,25 @@ def test_blended_loss_rejects_bad_alpha() -> None:
 
     with pytest.raises(ValueError, match="alpha"):
         blended_distillation_loss(logits, logits, labels, alpha=1.2)
+
+
+def test_blended_js_loss_returns_components() -> None:
+    student = torch.tensor([[[2.0, 0.0], [0.0, 2.0]]])
+    teacher = torch.tensor([[[0.5, 1.0], [0.0, 1.5]]])
+    labels = torch.tensor([[-100, 1]])
+
+    report = blended_js_distillation_loss(
+        student,
+        teacher,
+        labels,
+        alpha=0.4,
+        temperature=2.0,
+    )
+
+    assert set(report) == {"loss", "js_loss", "ce_loss"}
+    assert report["loss"].item() == pytest.approx(
+        0.4 * report["js_loss"].item() + 0.6 * report["ce_loss"].item()
+    )
 
 
 def test_topk_kl_is_zero_when_student_matches_teacher_support() -> None:

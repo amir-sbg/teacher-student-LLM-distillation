@@ -70,6 +70,34 @@ def temperature_kl_loss(
     return masked_mean(token_kl, mask) * temperature**2
 
 
+def temperature_js_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    student_probabilities = F.softmax(student_logits / temperature, dim=-1)
+    teacher_probabilities = F.softmax(teacher_logits / temperature, dim=-1)
+    mixture = 0.5 * (student_probabilities + teacher_probabilities)
+
+    student_log = torch.log(student_probabilities.clamp_min(1e-12))
+    teacher_log = torch.log(teacher_probabilities.clamp_min(1e-12))
+    mixture_log = torch.log(mixture.clamp_min(1e-12))
+    token_js = 0.5 * (
+        teacher_probabilities * (teacher_log - mixture_log)
+    ).sum(dim=-1) + 0.5 * (
+        student_probabilities * (student_log - mixture_log)
+    ).sum(dim=-1)
+    return masked_mean(token_js, mask) * temperature**2
+
+
 def topk_temperature_kl_loss(
     student_logits: torch.Tensor,
     teacher_topk_indices: torch.Tensor,
@@ -141,6 +169,34 @@ def blended_distillation_loss(
     return {
         "loss": loss,
         "kl_loss": kl,
+        "ce_loss": ce,
+    }
+
+
+def blended_js_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float = 0.7,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    ignore_index: int = -100,
+) -> dict[str, torch.Tensor]:
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if mask is None:
+        mask = labels.ne(ignore_index)
+
+    js = temperature_js_loss(
+        student_logits,
+        teacher_logits,
+        temperature=temperature,
+        mask=mask,
+    )
+    ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
+    return {
+        "loss": alpha * js + (1.0 - alpha) * ce,
+        "js_loss": js,
         "ce_loss": ce,
     }
 
