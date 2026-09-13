@@ -75,6 +75,8 @@ def test_audit_cache_warns_about_malformed_splits(tmp_path) -> None:
 
     report = audit_cache(cache_dir)
 
+    assert report["status"] == "warning"
+    assert report["warning_count"] >= 4
     assert any("loss masks" in warning for warning in report["warnings"])
     assert any("without teacher top-k" in warning for warning in report["warnings"])
     assert any("non-finite" in warning for warning in report["warnings"])
@@ -96,4 +98,5 @@ def test_audit_cache_warns_when_logits_are_missing(tmp_path) -> None:
 
     report = audit_cache(cache_dir)
 
+    assert report["status"] == "warning"
     assert any("without cached teacher logits" in warning for warning in report["warnings"])

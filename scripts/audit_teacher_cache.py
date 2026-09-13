@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 from statistics import mean
 
@@ -120,13 +121,20 @@ def audit_cache(cache_dir: Path) -> dict:
             warnings.append(f"{split} has inconsistent teacher top-k widths")
         if stats["supervised_tokens"] > 0 and stats["supervised_token_coverage"] < 0.95:
             warnings.append(f"{split} has partial teacher-token coverage")
-    return {"manifest": manifest, "splits": splits, "warnings": warnings}
+    return {
+        "manifest": manifest,
+        "splits": splits,
+        "warnings": warnings,
+        "warning_count": len(warnings),
+        "status": "pass" if not warnings else "warning",
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Audit cached teacher logits before student training.")
     parser.add_argument("--cache-dir", type=Path, default=Path("artifacts/teacher_cache"))
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--fail-on-warning", action="store_true")
     args = parser.parse_args()
 
     report = audit_cache(args.cache_dir)
@@ -135,6 +143,8 @@ def main() -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(text + "\n", encoding="utf-8")
     print(text)
+    if args.fail_on_warning and report["warnings"]:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
