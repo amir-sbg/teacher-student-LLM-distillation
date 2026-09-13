@@ -5,6 +5,7 @@ import pytest
 from scripts.generation_metrics import (
     distinct_n,
     generation_pair_metrics,
+    generation_quality_flags,
     load_generation_rows,
     set_coverage,
     summarize_generation_rows,
@@ -42,6 +43,18 @@ def test_generation_pair_metrics_compare_teacher_and_student() -> None:
     assert "student_reference_unigram_f1" in metrics
 
 
+def test_generation_quality_flags_catch_weak_outputs() -> None:
+    flags = generation_quality_flags(
+        {
+            "teacher_student_unigram_f1": 0.1,
+            "length_ratio": 0.2,
+            "student_repetition_rate": 0.7,
+        }
+    )
+
+    assert flags == ["low_teacher_overlap", "too_short", "repetitive_student"]
+
+
 def test_summarize_generation_rows_supports_key_aliases() -> None:
     report = summarize_generation_rows(
         [
@@ -59,6 +72,8 @@ def test_summarize_generation_rows_supports_key_aliases() -> None:
 
     assert report["rows"] == 2
     assert report["summary"]["student_tokens"] > 0
+    assert "flag_counts" in report
+    assert "quality_flags" in report["per_row"][0]
 
 
 def test_summarize_generation_rows_requires_outputs() -> None:

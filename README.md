@@ -92,7 +92,7 @@ python scripts/generation_metrics.py \
   --output reports/generation_metrics.json
 ```
 
-The report tracks length ratio, unigram/bigram overlap, teacher/student coverage, novel-token rate, distinct-n, repetition rate, and optional reference overlap when a target response is available.
+The report tracks length ratio, unigram/bigram overlap, teacher/student coverage, novel-token rate, distinct-n, repetition rate, and optional reference overlap when a target response is available. It also adds lightweight quality flags for low teacher overlap, very short or long answers, and repetition-heavy student generations.
 
 ## Notes
 

@@ -109,6 +109,33 @@ def generation_pair_metrics(
     return report
 
 
+def generation_quality_flags(
+    metrics: dict[str, float | int],
+    *,
+    min_unigram_f1: float = 0.30,
+    min_length_ratio: float = 0.40,
+    max_length_ratio: float = 1.80,
+    max_repetition_rate: float = 0.35,
+) -> list[str]:
+    if min_unigram_f1 < 0:
+        raise ValueError("min_unigram_f1 must not be negative")
+    if min_length_ratio <= 0 or max_length_ratio < min_length_ratio:
+        raise ValueError("length-ratio bounds are inconsistent")
+    if not 0 <= max_repetition_rate <= 1:
+        raise ValueError("max_repetition_rate must be between 0 and 1")
+
+    flags = []
+    if float(metrics["teacher_student_unigram_f1"]) < min_unigram_f1:
+        flags.append("low_teacher_overlap")
+    if float(metrics["length_ratio"]) < min_length_ratio:
+        flags.append("too_short")
+    if float(metrics["length_ratio"]) > max_length_ratio:
+        flags.append("too_long")
+    if float(metrics["student_repetition_rate"]) > max_repetition_rate:
+        flags.append("repetitive_student")
+    return flags
+
+
 def summarize_generation_rows(rows: list[dict]) -> dict:
     if not rows:
         raise ValueError("at least one generation row is required")
@@ -119,7 +146,13 @@ def summarize_generation_rows(rows: list[dict]) -> dict:
         student_text = _first_text(row, STUDENT_KEYS)
         reference_text = _first_text(row, REFERENCE_KEYS, required=False)
         metrics = generation_pair_metrics(teacher_text, student_text, reference_text)
-        per_row.append({"index": index, **metrics})
+        per_row.append(
+            {
+                "index": index,
+                **metrics,
+                "quality_flags": generation_quality_flags(metrics),
+            }
+        )
 
     numeric_keys = sorted(
         {
@@ -133,9 +166,14 @@ def summarize_generation_rows(rows: list[dict]) -> dict:
         key: float(mean(float(row[key]) for row in per_row if key in row))
         for key in numeric_keys
     }
+    flag_counts: dict[str, int] = {}
+    for row in per_row:
+        for flag in row["quality_flags"]:
+            flag_counts[flag] = flag_counts.get(flag, 0) + 1
     return {
         "rows": len(rows),
         "summary": summary,
+        "flag_counts": flag_counts,
         "per_row": per_row,
     }
 
