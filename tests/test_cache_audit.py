@@ -100,3 +100,31 @@ def test_audit_cache_warns_when_logits_are_missing(tmp_path) -> None:
 
     assert report["status"] == "warning"
     assert any("without cached teacher logits" in warning for warning in report["warnings"])
+
+
+def test_audit_cache_warns_about_duplicate_record_ids(tmp_path) -> None:
+    cache_dir = tmp_path / "cache"
+    write_jsonl(
+        cache_dir / "train_teacher_topk.jsonl",
+        [
+            {
+                "id": "sample-1",
+                "input_ids": [1, 2],
+                "loss_mask": [0, 1],
+                "teacher_topk_indices": [[3, 4]],
+                "teacher_topk_logits": [[1.0, 0.5]],
+            },
+            {
+                "id": "sample-1",
+                "input_ids": [1, 3],
+                "loss_mask": [0, 1],
+                "teacher_topk_indices": [[3, 5]],
+                "teacher_topk_logits": [[0.8, 0.4]],
+            },
+        ],
+    )
+
+    report = audit_cache(cache_dir)
+
+    assert report["splits"]["train"]["duplicate_record_ids"] == 1
+    assert any("duplicate cached example ids" in warning for warning in report["warnings"])

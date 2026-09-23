@@ -32,6 +32,7 @@ def summarize_split(path: Path) -> dict:
             "topk_shape_mismatches": 0,
             "nonfinite_teacher_logits": 0,
             "loss_mask_length_mismatches": 0,
+            "duplicate_record_ids": 0,
             "cached_teacher_positions": 0,
             "supervised_token_coverage": 0.0,
             "estimated_topk_cache_mb": 0.0,
@@ -48,7 +49,14 @@ def summarize_split(path: Path) -> dict:
     topk_shape_mismatches = 0
     nonfinite_teacher_logits = 0
     length_mismatches = 0
+    seen_ids = set()
+    duplicate_record_ids = 0
     for row in rows:
+        record_id = row.get("id") or row.get("record_id") or row.get("example_id")
+        if record_id is not None:
+            if record_id in seen_ids:
+                duplicate_record_ids += 1
+            seen_ids.add(record_id)
         input_ids = row.get("input_ids", [])
         loss_mask = row.get("loss_mask", [])
         teacher_indices = row.get("teacher_topk_indices", [])
@@ -83,6 +91,7 @@ def summarize_split(path: Path) -> dict:
         "topk_shape_mismatches": topk_shape_mismatches,
         "nonfinite_teacher_logits": nonfinite_teacher_logits,
         "loss_mask_length_mismatches": length_mismatches,
+        "duplicate_record_ids": duplicate_record_ids,
         "cached_teacher_positions": cached_teacher_positions,
         "supervised_token_coverage": round(
             cached_teacher_positions / supervised_total,
@@ -117,6 +126,8 @@ def audit_cache(cache_dir: Path) -> dict:
             warnings.append(f"{split} has non-finite teacher logits")
         if stats["loss_mask_length_mismatches"]:
             warnings.append(f"{split} has loss masks with a different length than input_ids")
+        if stats["duplicate_record_ids"]:
+            warnings.append(f"{split} has duplicate cached example ids")
         if stats["min_top_k"] and stats["min_top_k"] != stats["max_top_k"]:
             warnings.append(f"{split} has inconsistent teacher top-k widths")
         if stats["supervised_tokens"] > 0 and stats["supervised_token_coverage"] < 0.95:
