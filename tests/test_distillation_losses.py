@@ -8,8 +8,10 @@ from scripts.distillation_losses import (
     distillation_schedule,
     hard_ce_loss,
     masked_mean,
+    soft_target_entropy,
     temperature_js_loss,
     topk_temperature_kl_loss,
+    top1_agreement,
     temperature_kl_loss,
 )
 
@@ -71,6 +73,24 @@ def test_temperature_js_is_symmetric_and_bounded() -> None:
     assert forward.item() > 0.0
     assert forward.item() == pytest.approx(backward.item())
     assert forward.item() < temperature_kl_loss(student, teacher, temperature=2.0).item()
+
+
+def test_soft_target_entropy_uses_temperature_and_mask() -> None:
+    sharp = torch.tensor([[[8.0, 0.0], [0.0, 0.0]]])
+    mask = torch.tensor([[1, 0]], dtype=torch.bool)
+
+    cold = soft_target_entropy(sharp, temperature=1.0, mask=mask)
+    warm = soft_target_entropy(sharp, temperature=4.0, mask=mask)
+
+    assert cold.item() < warm.item()
+
+
+def test_top1_agreement_tracks_teacher_choices() -> None:
+    student = torch.tensor([[[2.0, 0.0], [0.0, 2.0], [3.0, 1.0]]])
+    teacher = torch.tensor([[[1.0, 0.0], [4.0, 5.0], [0.0, 2.0]]])
+    mask = torch.tensor([[1, 1, 0]], dtype=torch.bool)
+
+    assert top1_agreement(student, teacher, mask=mask).item() == pytest.approx(1.0)
 
 
 def test_hard_ce_ignores_prompt_positions() -> None:

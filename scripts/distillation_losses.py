@@ -98,6 +98,35 @@ def temperature_js_loss(
     return masked_mean(token_js, mask) * temperature**2
 
 
+def soft_target_entropy(
+    logits: torch.Tensor,
+    temperature: float = 1.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    probabilities = F.softmax(logits / temperature, dim=-1)
+    token_entropy = -(probabilities * torch.log(probabilities.clamp_min(1e-12))).sum(dim=-1)
+    return masked_mean(token_entropy, mask)
+
+
+def top1_agreement(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    agreement = student_logits.argmax(dim=-1).eq(teacher_logits.argmax(dim=-1)).float()
+    return masked_mean(agreement, mask)
+
+
 def topk_temperature_kl_loss(
     student_logits: torch.Tensor,
     teacher_topk_indices: torch.Tensor,
