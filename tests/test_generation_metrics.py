@@ -6,6 +6,7 @@ from scripts.generation_metrics import (
     distinct_n,
     generation_pair_metrics,
     generation_quality_flags,
+    jaccard_overlap,
     load_generation_rows,
     set_coverage,
     summarize_generation_rows,
@@ -28,6 +29,11 @@ def test_set_coverage_handles_empty_left_side() -> None:
     assert set_coverage(["a", "b"], ["b", "c"]) == 0.5
 
 
+def test_jaccard_overlap_handles_shared_and_empty_sets() -> None:
+    assert jaccard_overlap([], []) == 1.0
+    assert jaccard_overlap(["a", "b"], ["b", "c"]) == pytest.approx(1 / 3)
+
+
 def test_generation_pair_metrics_compare_teacher_and_student() -> None:
     metrics = generation_pair_metrics(
         teacher_text="The model learns from soft labels.",
@@ -38,6 +44,7 @@ def test_generation_pair_metrics_compare_teacher_and_student() -> None:
     assert metrics["student_tokens"] == 5
     assert metrics["student_length_delta"] == -1
     assert metrics["teacher_student_unigram_f1"] > 0.5
+    assert metrics["teacher_student_jaccard"] > 0.4
     assert 0 <= metrics["student_novel_unigram_rate"] <= 1
     assert metrics["student_unigram_teacher_coverage"] > 0.5
     assert "student_reference_unigram_f1" in metrics
@@ -49,10 +56,16 @@ def test_generation_quality_flags_catch_weak_outputs() -> None:
             "teacher_student_unigram_f1": 0.1,
             "length_ratio": 0.2,
             "student_repetition_rate": 0.7,
+            "teacher_student_jaccard": 0.95,
         }
     )
 
-    assert flags == ["low_teacher_overlap", "too_short", "repetitive_student"]
+    assert flags == [
+        "low_teacher_overlap",
+        "too_short",
+        "repetitive_student",
+        "near_teacher_copy",
+    ]
 
 
 def test_summarize_generation_rows_supports_key_aliases() -> None:

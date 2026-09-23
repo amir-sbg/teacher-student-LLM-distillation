@@ -48,6 +48,17 @@ def set_coverage(left: Iterable, right: Iterable) -> float:
     return len(left_set & right_set) / len(left_set)
 
 
+def jaccard_overlap(left: Iterable, right: Iterable) -> float:
+    left_set = set(left)
+    right_set = set(right)
+    if not left_set and not right_set:
+        return 1.0
+    union = left_set | right_set
+    if not union:
+        return 0.0
+    return len(left_set & right_set) / len(union)
+
+
 def distinct_n(tokens: list[str], n: int) -> float:
     grams = ngram_set(tokens, n)
     total = max(len(tokens) - n + 1, 0)
@@ -77,6 +88,7 @@ def generation_pair_metrics(
         "student_length_delta": len(student_tokens) - len(teacher_tokens),
         "length_ratio": len(student_tokens) / max(len(teacher_tokens), 1),
         "teacher_student_unigram_f1": overlap_f1(student_unigrams, teacher_unigrams),
+        "teacher_student_jaccard": jaccard_overlap(student_unigrams, teacher_unigrams),
         "teacher_student_bigram_f1": overlap_f1(
             ngram_set(student_tokens, 2),
             ngram_set(teacher_tokens, 2),
@@ -116,6 +128,7 @@ def generation_quality_flags(
     min_length_ratio: float = 0.40,
     max_length_ratio: float = 1.80,
     max_repetition_rate: float = 0.35,
+    max_copy_jaccard: float = 0.92,
 ) -> list[str]:
     if min_unigram_f1 < 0:
         raise ValueError("min_unigram_f1 must not be negative")
@@ -123,6 +136,8 @@ def generation_quality_flags(
         raise ValueError("length-ratio bounds are inconsistent")
     if not 0 <= max_repetition_rate <= 1:
         raise ValueError("max_repetition_rate must be between 0 and 1")
+    if not 0 <= max_copy_jaccard <= 1:
+        raise ValueError("max_copy_jaccard must be between 0 and 1")
 
     flags = []
     if float(metrics["teacher_student_unigram_f1"]) < min_unigram_f1:
@@ -133,6 +148,8 @@ def generation_quality_flags(
         flags.append("too_long")
     if float(metrics["student_repetition_rate"]) > max_repetition_rate:
         flags.append("repetitive_student")
+    if float(metrics.get("teacher_student_jaccard", 0.0)) > max_copy_jaccard:
+        flags.append("near_teacher_copy")
     return flags
 
 
