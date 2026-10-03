@@ -9,6 +9,7 @@ from scripts.distillation_losses import (
     hard_ce_loss,
     masked_mean,
     soft_target_entropy,
+    teacher_rank_metrics,
     temperature_js_loss,
     topk_temperature_kl_loss,
     top1_agreement,
@@ -91,6 +92,24 @@ def test_top1_agreement_tracks_teacher_choices() -> None:
     mask = torch.tensor([[1, 1, 0]], dtype=torch.bool)
 
     assert top1_agreement(student, teacher, mask=mask).item() == pytest.approx(1.0)
+
+
+def test_teacher_rank_metrics_track_student_ordering() -> None:
+    student = torch.tensor([[[3.0, 2.0, 1.0], [3.0, 2.0, 1.0]]])
+    teacher = torch.tensor([[[4.0, 0.0, 0.0], [0.0, 0.0, 4.0]]])
+
+    metrics = teacher_rank_metrics(student, teacher, k=2)
+
+    assert metrics["top1_agreement"].item() == pytest.approx(0.5)
+    assert metrics["topk_agreement"].item() == pytest.approx(0.5)
+    assert metrics["mean_reciprocal_rank"].item() == pytest.approx(2 / 3)
+    assert metrics["mean_teacher_token_rank"].item() == pytest.approx(2.0)
+
+
+def test_teacher_rank_metrics_reject_bad_k() -> None:
+    logits = torch.zeros(1, 1, 2)
+    with pytest.raises(ValueError, match="k"):
+        teacher_rank_metrics(logits, logits, k=0)
 
 
 def test_hard_ce_ignores_prompt_positions() -> None:

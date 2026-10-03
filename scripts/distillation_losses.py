@@ -127,6 +127,31 @@ def top1_agreement(
     return masked_mean(agreement, mask)
 
 
+def teacher_rank_metrics(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    k: int = 5,
+    mask: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+    if k < 1:
+        raise ValueError("k must be positive")
+
+    teacher_choice = teacher_logits.argmax(dim=-1, keepdim=True)
+    teacher_choice_score = torch.gather(student_logits, dim=-1, index=teacher_choice)
+    ranks = 1 + (student_logits > teacher_choice_score).sum(dim=-1)
+    effective_k = min(k, student_logits.shape[-1])
+    return {
+        "top1_agreement": masked_mean(ranks.eq(1).float(), mask),
+        "topk_agreement": masked_mean(ranks.le(effective_k).float(), mask),
+        "mean_reciprocal_rank": masked_mean(ranks.float().reciprocal(), mask),
+        "mean_teacher_token_rank": masked_mean(ranks.float(), mask),
+    }
+
+
 def topk_temperature_kl_loss(
     student_logits: torch.Tensor,
     teacher_topk_indices: torch.Tensor,
