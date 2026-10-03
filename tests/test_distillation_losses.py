@@ -156,7 +156,7 @@ def test_blended_js_loss_returns_components() -> None:
 
 
 def test_topk_kl_is_zero_when_student_matches_teacher_support() -> None:
-    student = torch.tensor([[[2.0, 0.5, -1.0, 1.0], [0.1, 3.0, 0.0, -0.5]]])
+    student = torch.tensor([[[2.0, -100.0, -100.0, 1.0], [-100.0, 3.0, 0.0, -100.0]]])
     indices = torch.tensor([[[0, 3], [1, 2]]])
     teacher_logits = torch.gather(student, dim=-1, index=indices)
     mask = torch.tensor([[1, 1]], dtype=torch.bool)
@@ -170,6 +170,18 @@ def test_topk_kl_is_zero_when_student_matches_teacher_support() -> None:
     )
 
     assert loss.item() == pytest.approx(0.0, abs=2e-7)
+
+
+def test_topk_kl_penalizes_student_mass_outside_teacher_support() -> None:
+    indices = torch.tensor([[[0, 1]]])
+    teacher_logits = torch.tensor([[[2.0, 1.0]]])
+    aligned = torch.tensor([[[2.0, 1.0, -8.0]]])
+    leaked = torch.tensor([[[2.0, 1.0, 8.0]]])
+
+    aligned_loss = topk_temperature_kl_loss(aligned, indices, teacher_logits)
+    leaked_loss = topk_temperature_kl_loss(leaked, indices, teacher_logits)
+
+    assert leaked_loss > aligned_loss
 
 
 def test_topk_blended_loss_returns_components() -> None:

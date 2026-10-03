@@ -149,11 +149,15 @@ def topk_temperature_kl_loss(
     if teacher_topk_indices.min().item() < 0 or teacher_topk_indices.max().item() >= student_logits.shape[-1]:
         raise ValueError("teacher_topk_indices contain ids outside the student vocabulary")
 
-    gathered_student = torch.gather(student_logits, dim=-1, index=teacher_topk_indices.long())
+    student_log_probabilities = F.log_softmax(student_logits / temperature, dim=-1)
+    gathered_student_log = torch.gather(
+        student_log_probabilities,
+        dim=-1,
+        index=teacher_topk_indices.long(),
+    )
     teacher_distribution = F.softmax(teacher_topk_logits / temperature, dim=-1)
-    student_log_distribution = F.log_softmax(gathered_student / temperature, dim=-1)
     teacher_log_distribution = torch.log(teacher_distribution.clamp_min(1e-12))
-    token_kl = (teacher_distribution * (teacher_log_distribution - student_log_distribution)).sum(dim=-1)
+    token_kl = (teacher_distribution * (teacher_log_distribution - gathered_student_log)).sum(dim=-1)
     return masked_mean(token_kl, mask) * temperature**2
 
 
