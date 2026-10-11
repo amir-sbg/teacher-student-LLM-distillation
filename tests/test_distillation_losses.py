@@ -2,13 +2,16 @@ import pytest
 import torch
 
 from scripts.distillation_losses import (
+    blended_confidence_distillation_loss,
     blended_distillation_loss,
     blended_js_distillation_loss,
     blended_topk_distillation_loss,
+    confidence_weighted_kl_loss,
     distillation_schedule,
     hard_ce_loss,
     masked_mean,
     soft_target_entropy,
+    teacher_token_confidence,
     teacher_rank_metrics,
     temperature_js_loss,
     topk_temperature_kl_loss,
@@ -84,6 +87,42 @@ def test_soft_target_entropy_uses_temperature_and_mask() -> None:
     warm = soft_target_entropy(sharp, temperature=4.0, mask=mask)
 
     assert cold.item() < warm.item()
+
+
+def test_teacher_confidence_tracks_distribution_sharpness() -> None:
+    logits = torch.tensor([[[8.0, 0.0, 0.0], [0.0, 0.0, 0.0]]])
+
+    confidence = teacher_token_confidence(logits)
+
+    assert confidence[0, 0] > 0.9
+    assert confidence[0, 1].item() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_confidence_weighted_kl_downweights_uncertain_teacher_tokens() -> None:
+    teacher = torch.tensor([[[8.0, 0.0], [0.0, 0.0]]])
+    student = torch.tensor([[[0.0, 8.0], [8.0, 0.0]]])
+
+    weighted = confidence_weighted_kl_loss(
+        student,
+        teacher,
+        temperature=1.0,
+        minimum_weight=0.0,
+    )
+    unweighted = temperature_kl_loss(student, teacher, temperature=1.0)
+
+    assert weighted > unweighted
+
+
+def test_confidence_blend_returns_trainable_components() -> None:
+    student = torch.tensor([[[2.0, 0.0], [0.0, 2.0]]], requires_grad=True)
+    teacher = torch.tensor([[[1.5, 0.0], [0.0, 1.5]]])
+    labels = torch.tensor([[-100, 1]])
+
+    report = blended_confidence_distillation_loss(student, teacher, labels, alpha=0.6)
+    report["loss"].backward()
+
+    assert set(report) == {"loss", "kl_loss", "ce_loss"}
+    assert student.grad is not None
 
 
 def test_top1_agreement_tracks_teacher_choices() -> None:

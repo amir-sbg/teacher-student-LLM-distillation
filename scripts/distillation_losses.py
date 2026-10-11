@@ -113,6 +113,58 @@ def soft_target_entropy(
     return masked_mean(token_entropy, mask)
 
 
+def teacher_token_confidence(
+    teacher_logits: torch.Tensor,
+    temperature: float = 1.0,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if teacher_logits.ndim != 3:
+        raise ValueError("teacher_logits must have shape (batch, sequence, vocab)")
+    if teacher_logits.shape[-1] < 2:
+        raise ValueError("teacher vocabulary must contain at least two tokens")
+
+    probabilities = F.softmax(teacher_logits / temperature, dim=-1)
+    entropy = -(probabilities * torch.log(probabilities.clamp_min(1e-12))).sum(dim=-1)
+    maximum_entropy = teacher_logits.new_tensor(float(teacher_logits.shape[-1])).log()
+    return (1.0 - entropy / maximum_entropy).clamp(0.0, 1.0)
+
+
+def confidence_weighted_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    confidence_power: float = 1.0,
+    minimum_weight: float = 0.05,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if confidence_power < 0:
+        raise ValueError("confidence_power must not be negative")
+    if not 0.0 <= minimum_weight <= 1.0:
+        raise ValueError("minimum_weight must be between 0 and 1")
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    teacher_probabilities = F.softmax(teacher_logits / temperature, dim=-1)
+    token_kl = F.kl_div(
+        F.log_softmax(student_logits / temperature, dim=-1),
+        teacher_probabilities,
+        reduction="none",
+    ).sum(dim=-1)
+    confidence = teacher_token_confidence(teacher_logits, temperature=temperature)
+    weights = confidence.pow(confidence_power).clamp_min(minimum_weight)
+    if mask is not None:
+        if mask.shape != token_kl.shape:
+            raise ValueError("mask must have the same batch and sequence shape as logits")
+        weights = weights * mask.to(dtype=weights.dtype)
+    denominator = weights.sum().clamp_min(torch.finfo(weights.dtype).eps)
+    return (token_kl * weights).sum() / denominator * temperature**2
+
+
 def top1_agreement(
     student_logits: torch.Tensor,
     teacher_logits: torch.Tensor,
@@ -226,6 +278,38 @@ def blended_distillation_loss(
     loss = alpha * kl + (1.0 - alpha) * ce
     return {
         "loss": loss,
+        "kl_loss": kl,
+        "ce_loss": ce,
+    }
+
+
+def blended_confidence_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float = 0.7,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    confidence_power: float = 1.0,
+    minimum_weight: float = 0.05,
+    ignore_index: int = -100,
+) -> dict[str, torch.Tensor]:
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if mask is None:
+        mask = labels.ne(ignore_index)
+
+    kl = confidence_weighted_kl_loss(
+        student_logits,
+        teacher_logits,
+        temperature=temperature,
+        mask=mask,
+        confidence_power=confidence_power,
+        minimum_weight=minimum_weight,
+    )
+    ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
+    return {
+        "loss": alpha * kl + (1.0 - alpha) * ce,
         "kl_loss": kl,
         "ce_loss": ce,
     }
