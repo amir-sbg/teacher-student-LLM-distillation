@@ -63,7 +63,7 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 
 The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, confidence-weighted teacher matching, Jensen-Shannon soft-target matching, top-k cache KL against the student's full-vocabulary distribution, hard CE, entropy diagnostics, and the blended loss used by the student notebook. Teacher-token rank diagnostics add top-k agreement, mean reciprocal rank, and mean rank so student imitation can be inspected beyond loss alone.
 
-The same helper includes a small linear schedule for `α` and `T`. A typical run can begin with more hard-label grounding, then increase the teacher KL weight once the student is stable.
+The same helper includes a small linear schedule for `α` and `T`. A typical run can begin with more hard-label grounding, then increase the teacher KL weight once the student is stable. Linear CKA is included for experiments that align intermediate student and teacher representations even when their hidden widths differ.
 
 ## Outputs
 

@@ -9,7 +9,9 @@ from scripts.distillation_losses import (
     confidence_weighted_kl_loss,
     distillation_schedule,
     hard_ce_loss,
+    linear_cka_similarity,
     masked_mean,
+    representation_alignment_loss,
     soft_target_entropy,
     teacher_token_confidence,
     teacher_rank_metrics,
@@ -149,6 +151,35 @@ def test_teacher_rank_metrics_reject_bad_k() -> None:
     logits = torch.zeros(1, 1, 2)
     with pytest.raises(ValueError, match="k"):
         teacher_rank_metrics(logits, logits, k=0)
+
+
+def test_linear_cka_is_invariant_to_global_rescaling() -> None:
+    hidden = torch.tensor(
+        [[[1.0, 0.0], [0.0, 1.0], [2.0, 1.0], [1.0, 3.0]]]
+    )
+
+    similarity = linear_cka_similarity(hidden, hidden * 4.0)
+
+    assert similarity.item() == pytest.approx(1.0, abs=1e-6)
+    assert representation_alignment_loss(hidden, hidden * 4.0).item() == pytest.approx(
+        0.0, abs=1e-6
+    )
+
+
+def test_linear_cka_supports_different_hidden_widths_and_masks() -> None:
+    student = torch.tensor([[[1.0], [2.0], [3.0]]])
+    teacher = torch.tensor([[[1.0, 2.0], [2.0, 4.0], [99.0, -99.0]]])
+    mask = torch.tensor([[1, 1, 0]], dtype=torch.bool)
+
+    similarity = linear_cka_similarity(student, teacher, mask=mask)
+
+    assert similarity.item() == pytest.approx(1.0, abs=1e-6)
+
+
+def test_linear_cka_needs_two_active_tokens() -> None:
+    hidden = torch.ones(1, 2, 3)
+    with pytest.raises(ValueError, match="at least two"):
+        linear_cka_similarity(hidden, hidden, mask=torch.tensor([[1, 0]]))
 
 
 def test_hard_ce_ignores_prompt_positions() -> None:
