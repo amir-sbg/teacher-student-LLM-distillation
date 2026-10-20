@@ -248,6 +248,44 @@ def representation_alignment_loss(
     return 1.0 - linear_cka_similarity(student_hidden, teacher_hidden, mask=mask)
 
 
+def relational_similarity_loss(
+    student_hidden: torch.Tensor,
+    teacher_hidden: torch.Tensor,
+    mask: torch.Tensor | None = None,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """Match pairwise cosine geometry without requiring equal hidden widths."""
+
+    if student_hidden.ndim != 3 or teacher_hidden.ndim != 3:
+        raise ValueError("hidden states must have shape (batch, sequence, features)")
+    if student_hidden.shape[:2] != teacher_hidden.shape[:2]:
+        raise ValueError("student and teacher hidden states must share batch and sequence dimensions")
+    if eps <= 0:
+        raise ValueError("eps must be positive")
+
+    student = student_hidden.reshape(-1, student_hidden.shape[-1])
+    teacher = teacher_hidden.reshape(-1, teacher_hidden.shape[-1])
+    if mask is not None:
+        if mask.shape != student_hidden.shape[:2]:
+            raise ValueError("mask must have the same batch and sequence shape as hidden states")
+        active = mask.reshape(-1).bool()
+        student = student[active]
+        teacher = teacher[active]
+    if student.shape[0] < 2:
+        raise ValueError("relational alignment requires at least two active token representations")
+
+    student = F.normalize(student, dim=-1, eps=eps)
+    teacher = F.normalize(teacher, dim=-1, eps=eps)
+    student_relations = student @ student.transpose(0, 1)
+    teacher_relations = teacher @ teacher.transpose(0, 1)
+    off_diagonal = ~torch.eye(
+        student_relations.shape[0],
+        dtype=torch.bool,
+        device=student_relations.device,
+    )
+    return F.mse_loss(student_relations[off_diagonal], teacher_relations[off_diagonal])
+
+
 def topk_temperature_kl_loss(
     student_logits: torch.Tensor,
     teacher_topk_indices: torch.Tensor,

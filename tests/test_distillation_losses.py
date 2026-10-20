@@ -11,6 +11,7 @@ from scripts.distillation_losses import (
     hard_ce_loss,
     linear_cka_similarity,
     masked_mean,
+    relational_similarity_loss,
     representation_alignment_loss,
     soft_target_entropy,
     teacher_token_confidence,
@@ -180,6 +181,28 @@ def test_linear_cka_needs_two_active_tokens() -> None:
     hidden = torch.ones(1, 2, 3)
     with pytest.raises(ValueError, match="at least two"):
         linear_cka_similarity(hidden, hidden, mask=torch.tensor([[1, 0]]))
+
+
+def test_relational_loss_matches_geometry_across_hidden_widths() -> None:
+    student = torch.tensor([[[1.0, 0.0], [0.0, 2.0], [1.0, 1.0]]])
+    teacher = torch.cat((student * 3.0, torch.zeros(1, 3, 1)), dim=-1)
+
+    loss = relational_similarity_loss(student, teacher)
+
+    assert loss.item() == pytest.approx(0.0, abs=1e-7)
+
+
+def test_relational_loss_respects_mask_and_detects_changed_relations() -> None:
+    student = torch.tensor([[[1.0, 0.0], [0.0, 1.0], [9.0, 9.0]]])
+    aligned_teacher = torch.tensor([[[2.0, 0.0], [0.0, 4.0], [-9.0, 9.0]]])
+    changed_teacher = torch.tensor([[[1.0, 0.0], [1.0, 0.0], [-9.0, 9.0]]])
+    mask = torch.tensor([[1, 1, 0]], dtype=torch.bool)
+
+    aligned = relational_similarity_loss(student, aligned_teacher, mask=mask)
+    changed = relational_similarity_loss(student, changed_teacher, mask=mask)
+
+    assert aligned.item() == pytest.approx(0.0, abs=1e-7)
+    assert changed > aligned
 
 
 def test_hard_ce_ignores_prompt_positions() -> None:
