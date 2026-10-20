@@ -5,6 +5,7 @@ from scripts.distillation_losses import (
     blended_confidence_distillation_loss,
     blended_distillation_loss,
     blended_js_distillation_loss,
+    blended_standardized_distillation_loss,
     blended_topk_distillation_loss,
     confidence_weighted_kl_loss,
     distillation_schedule,
@@ -14,6 +15,7 @@ from scripts.distillation_losses import (
     relational_similarity_loss,
     representation_alignment_loss,
     soft_target_entropy,
+    standardized_logit_kl_loss,
     teacher_token_confidence,
     teacher_rank_metrics,
     temperature_js_loss,
@@ -68,6 +70,29 @@ def test_temperature_kl_is_zero_for_matching_logits() -> None:
     loss = temperature_kl_loss(logits, logits, temperature=2.0, mask=mask)
 
     assert loss.item() == pytest.approx(0.0, abs=2e-7)
+
+
+def test_standardized_kl_ignores_logit_scale_and_offset() -> None:
+    teacher = torch.tensor([[[2.0, 0.5, -1.0], [0.2, -0.4, 1.2]]])
+    student = teacher * 4.0 + 7.0
+
+    standardized = standardized_logit_kl_loss(student, teacher, temperature=1.0)
+    ordinary = temperature_kl_loss(student, teacher, temperature=1.0)
+
+    assert standardized.item() == pytest.approx(0.0, abs=2e-6)
+    assert ordinary > standardized
+
+
+def test_standardized_blend_backpropagates_through_student() -> None:
+    student = torch.tensor([[[2.0, 0.0], [0.0, 2.0]]], requires_grad=True)
+    teacher = torch.tensor([[[1.0, 0.5], [0.2, 1.5]]])
+    labels = torch.tensor([[-100, 1]])
+
+    report = blended_standardized_distillation_loss(student, teacher, labels, alpha=0.6)
+    report["loss"].backward()
+
+    assert set(report) == {"loss", "kl_loss", "ce_loss"}
+    assert student.grad is not None
 
 
 def test_temperature_js_is_symmetric_and_bounded() -> None:

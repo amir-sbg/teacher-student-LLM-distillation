@@ -70,6 +70,35 @@ def temperature_kl_loss(
     return masked_mean(token_kl, mask) * temperature**2
 
 
+def standardized_logit_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """Match token distributions after removing per-token logit scale and offset."""
+
+    if eps <= 0:
+        raise ValueError("eps must be positive")
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    def standardize(logits: torch.Tensor) -> torch.Tensor:
+        centered = logits - logits.mean(dim=-1, keepdim=True)
+        scale = centered.square().mean(dim=-1, keepdim=True).add(eps).sqrt()
+        return centered / scale
+
+    return temperature_kl_loss(
+        standardize(student_logits),
+        standardize(teacher_logits),
+        temperature=temperature,
+        mask=mask,
+    )
+
+
 def temperature_js_loss(
     student_logits: torch.Tensor,
     teacher_logits: torch.Tensor,
@@ -360,6 +389,34 @@ def blended_distillation_loss(
     loss = alpha * kl + (1.0 - alpha) * ce
     return {
         "loss": loss,
+        "kl_loss": kl,
+        "ce_loss": ce,
+    }
+
+
+def blended_standardized_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float = 0.7,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    ignore_index: int = -100,
+) -> dict[str, torch.Tensor]:
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if mask is None:
+        mask = labels.ne(ignore_index)
+
+    kl = standardized_logit_kl_loss(
+        student_logits,
+        teacher_logits,
+        temperature=temperature,
+        mask=mask,
+    )
+    ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
+    return {
+        "loss": alpha * kl + (1.0 - alpha) * ce,
         "kl_loss": kl,
         "ce_loss": ce,
     }
