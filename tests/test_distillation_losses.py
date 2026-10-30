@@ -11,12 +11,14 @@ from scripts.distillation_losses import (
     distillation_schedule,
     hard_ce_loss,
     linear_cka_similarity,
+    margin_weighted_kl_loss,
     masked_mean,
     relational_similarity_loss,
     representation_alignment_loss,
     soft_target_entropy,
     standardized_logit_kl_loss,
     teacher_token_confidence,
+    teacher_top2_margin,
     teacher_rank_metrics,
     temperature_js_loss,
     topk_temperature_kl_loss,
@@ -124,6 +126,26 @@ def test_teacher_confidence_tracks_distribution_sharpness() -> None:
 
     assert confidence[0, 0] > 0.9
     assert confidence[0, 1].item() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_teacher_margin_separates_decisive_and_ambiguous_tokens() -> None:
+    logits = torch.tensor([[[8.0, 0.0, 0.0], [1.0, 0.9, 0.0]]])
+
+    margin = teacher_top2_margin(logits)
+
+    assert margin[0, 0] > 0.9
+    assert margin[0, 1] < 0.1
+
+
+def test_margin_weighted_kl_remains_trainable() -> None:
+    teacher = torch.tensor([[[5.0, 0.0], [1.0, 0.9]]])
+    student = torch.tensor([[[0.0, 4.0], [0.0, 2.0]]], requires_grad=True)
+
+    loss = margin_weighted_kl_loss(student, teacher, temperature=1.0)
+    loss.backward()
+
+    assert loss.item() > 0
+    assert student.grad is not None
 
 
 def test_confidence_weighted_kl_downweights_uncertain_teacher_tokens() -> None:

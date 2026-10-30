@@ -159,6 +159,46 @@ def teacher_token_confidence(
     return (1.0 - entropy / maximum_entropy).clamp(0.0, 1.0)
 
 
+def teacher_top2_margin(
+    teacher_logits: torch.Tensor,
+    temperature: float = 1.0,
+) -> torch.Tensor:
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if teacher_logits.ndim != 3 or teacher_logits.shape[-1] < 2:
+        raise ValueError("teacher_logits must include at least two vocabulary entries")
+    top_two = F.softmax(teacher_logits / temperature, dim=-1).topk(2, dim=-1).values
+    return top_two[..., 0] - top_two[..., 1]
+
+
+def margin_weighted_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+    minimum_weight: float = 0.05,
+) -> torch.Tensor:
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if not 0.0 <= minimum_weight <= 1.0:
+        raise ValueError("minimum_weight must be between 0 and 1")
+
+    teacher_probabilities = F.softmax(teacher_logits / temperature, dim=-1)
+    token_kl = F.kl_div(
+        F.log_softmax(student_logits / temperature, dim=-1),
+        teacher_probabilities,
+        reduction="none",
+    ).sum(dim=-1)
+    weights = teacher_top2_margin(teacher_logits, temperature).clamp_min(minimum_weight)
+    if mask is not None:
+        if mask.shape != token_kl.shape:
+            raise ValueError("mask must have the same batch and sequence shape as logits")
+        weights = weights * mask.to(weights.dtype)
+    return (token_kl * weights).sum() / weights.sum().clamp_min(1e-12) * temperature**2
+
+
 def confidence_weighted_kl_loss(
     student_logits: torch.Tensor,
     teacher_logits: torch.Tensor,
