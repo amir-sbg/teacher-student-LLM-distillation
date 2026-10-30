@@ -36,6 +36,9 @@ def summarize_split(path: Path) -> dict:
             "cached_teacher_positions": 0,
             "supervised_token_coverage": 0.0,
             "estimated_topk_cache_mb": 0.0,
+            "avg_top1_probability": 0.0,
+            "avg_top2_margin": 0.0,
+            "avg_topk_entropy": 0.0,
         }
 
     token_lengths = [len(row.get("input_ids", [])) for row in rows]
@@ -51,6 +54,9 @@ def summarize_split(path: Path) -> dict:
     length_mismatches = 0
     seen_ids = set()
     duplicate_record_ids = 0
+    top1_probabilities = []
+    top2_margins = []
+    topk_entropies = []
     for row in rows:
         record_id = row.get("id") or row.get("record_id") or row.get("example_id")
         if record_id is not None:
@@ -75,6 +81,18 @@ def summarize_split(path: Path) -> dict:
                 topk_shape_mismatches += 1
             if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in logits):
                 nonfinite_teacher_logits += 1
+            elif logits:
+                maximum = max(logits)
+                exponentials = [math.exp(value - maximum) for value in logits]
+                total = sum(exponentials)
+                probabilities = sorted((value / total for value in exponentials), reverse=True)
+                top1_probabilities.append(probabilities[0])
+                top2_margins.append(
+                    probabilities[0] - probabilities[1] if len(probabilities) > 1 else 1.0
+                )
+                topk_entropies.append(
+                    -sum(value * math.log(max(value, 1e-12)) for value in probabilities)
+                )
             estimated_cache_bytes += 4 * (len(indices) + len(logits))
         top_k_values.extend(len(indices) for indices in teacher_indices if indices)
     return {
@@ -100,6 +118,9 @@ def summarize_split(path: Path) -> dict:
         if supervised_total
         else 0.0,
         "estimated_topk_cache_mb": round(estimated_cache_bytes / (1024 * 1024), 4),
+        "avg_top1_probability": round(mean(top1_probabilities), 4) if top1_probabilities else 0.0,
+        "avg_top2_margin": round(mean(top2_margins), 4) if top2_margins else 0.0,
+        "avg_topk_entropy": round(mean(topk_entropies), 4) if topk_entropies else 0.0,
     }
 
 

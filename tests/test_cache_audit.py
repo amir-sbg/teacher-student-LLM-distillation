@@ -47,6 +47,9 @@ def test_summarize_split_reports_cache_shape_issues(tmp_path) -> None:
     assert report["cached_teacher_positions"] == 3
     assert report["supervised_token_coverage"] == 0.75
     assert report["estimated_topk_cache_mb"] >= 0.0
+    assert 0 < report["avg_top1_probability"] <= 1
+    assert report["avg_top2_margin"] > 0
+    assert report["avg_topk_entropy"] > 0
 
 
 def test_audit_cache_warns_about_malformed_splits(tmp_path) -> None:

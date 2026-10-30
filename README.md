@@ -61,7 +61,7 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 
 `T` is the temperature used to soften the teacher distribution, `α` controls how much the student follows the teacher, and the hard cross-entropy term keeps the model grounded in the original response text. The teacher cache stores only top-k logits per response position, which preserves useful dark knowledge while keeping storage manageable.
 
-The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, scale-normalized logit matching, confidence-weighted teacher matching, Jensen-Shannon soft-target matching, top-k cache KL against the student's full-vocabulary distribution, hard CE, entropy diagnostics, and the blended loss used by the student notebook. Teacher-token rank diagnostics add top-k agreement, mean reciprocal rank, and mean rank so student imitation can be inspected beyond loss alone.
+The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, scale-normalized logit matching, confidence- and margin-weighted teacher matching, Jensen-Shannon soft-target matching, top-k cache KL against the student's full-vocabulary distribution, hard CE, entropy diagnostics, and the blended loss used by the student notebook. Teacher-token rank diagnostics add top-k agreement, mean reciprocal rank, and mean rank so student imitation can be inspected beyond loss alone.
 
 The same helper includes a small linear schedule for `α` and `T`. A typical run can begin with more hard-label grounding, then increase the teacher KL weight once the student is stable. Linear CKA and a pairwise relational loss support intermediate-representation experiments even when the teacher and student use different hidden widths.
 
@@ -82,7 +82,7 @@ Before training the student, the teacher cache can be checked without loading ei
 python scripts/audit_teacher_cache.py --cache-dir artifacts/teacher_cache --output reports/cache_audit.json
 ```
 
-The audit reports cached row counts, average sequence length, average supervised response tokens, top-k width, teacher-token coverage, estimated cache size, missing teacher logits, top-k index/logit shape mismatches, non-finite logits, loss-mask length mismatches, and empty-supervision warnings. It also returns a `pass` or `warning` status; add `--fail-on-warning` when using the audit in a local CI check before spending time on student training.
+The audit reports cached row counts, average sequence length, average supervised response tokens, top-k width, teacher-token coverage, estimated cache size, top-1 probability, top-2 margin, top-k entropy, missing teacher logits, shape mismatches, non-finite logits, loss-mask length mismatches, and empty-supervision warnings. It also returns a `pass` or `warning` status; add `--fail-on-warning` when using the audit in a local CI check before spending time on student training.
 
 ## Generation metrics
 
@@ -113,6 +113,8 @@ python scripts/calibration_metrics.py \
   --input reports/confidence_rows.jsonl \
   --output reports/calibration_metrics.json
 ```
+
+The calibration report includes ECE, Brier score, area under the selective-risk curve, and risk at several retained-coverage levels.
 
 ## Notes
 
