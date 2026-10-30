@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from statistics import mean
 
@@ -47,7 +48,43 @@ def expected_calibration_error(
                 "gap": round(gap, 6),
             }
         )
-    return {"ece": round(ece, 6), "brier": brier_score(confidences, correct), "bins": rows}
+    return {
+        "ece": round(ece, 6),
+        "brier": brier_score(confidences, correct),
+        "aurc": selective_risk_curve(confidences, correct)["aurc"],
+        "bins": rows,
+    }
+
+
+def selective_risk_curve(
+    confidences: list[float],
+    correct: list[bool],
+    coverages: tuple[float, ...] = (0.25, 0.5, 0.75, 1.0),
+) -> dict:
+    _validate_inputs(confidences, correct)
+    if not coverages or any(value <= 0 or value > 1 for value in coverages):
+        raise ValueError("coverages must be in (0, 1]")
+
+    ranked = sorted(zip(confidences, correct), key=lambda row: row[0], reverse=True)
+    prefix_risks = []
+    mistakes = 0
+    for index, (_, is_correct) in enumerate(ranked, start=1):
+        mistakes += int(not is_correct)
+        prefix_risks.append(mistakes / index)
+
+    rows = []
+    for coverage in coverages:
+        accepted = max(1, math.ceil(len(ranked) * coverage))
+        subset = ranked[:accepted]
+        rows.append(
+            {
+                "coverage": coverage,
+                "accepted": accepted,
+                "risk": round(sum(not value for _, value in subset) / accepted, 6),
+                "confidence_threshold": round(subset[-1][0], 6),
+            }
+        )
+    return {"aurc": round(mean(prefix_risks), 6), "points": rows}
 
 
 def load_confidence_rows(path: Path) -> tuple[list[float], list[bool]]:

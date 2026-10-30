@@ -6,6 +6,7 @@ from scripts.calibration_metrics import (
     brier_score,
     expected_calibration_error,
     load_confidence_rows,
+    selective_risk_curve,
 )
 
 
@@ -19,6 +20,7 @@ def test_expected_calibration_error_bins_predictions() -> None:
     assert report["ece"] > 0
     assert report["brier"] == brier_score([0.2, 0.4, 0.8, 1.0], [False, True, True, True])
     assert sum(row["count"] for row in report["bins"]) == 4
+    assert 0 <= report["aurc"] <= 1
 
 
 def test_calibration_rejects_bad_confidence() -> None:
@@ -37,3 +39,15 @@ def test_load_confidence_rows_reads_jsonl(tmp_path) -> None:
 
     assert confidences == [0.7]
     assert correct == [True]
+
+
+def test_selective_risk_improves_when_errors_have_low_confidence() -> None:
+    report = selective_risk_curve(
+        [0.95, 0.85, 0.4, 0.2],
+        [True, True, False, False],
+        coverages=(0.5, 1.0),
+    )
+
+    assert report["points"][0]["risk"] == 0.0
+    assert report["points"][1]["risk"] == 0.5
+    assert report["points"][0]["confidence_threshold"] == 0.85
