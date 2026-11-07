@@ -61,7 +61,7 @@ L = α · T² · KL(p_teacher^T || p_student^T) + (1 - α) · CE(y, p_student)
 
 `T` is the temperature used to soften the teacher distribution, `α` controls how much the student follows the teacher, and the hard cross-entropy term keeps the model grounded in the original response text. The teacher cache stores only top-k logits per response position, which preserves useful dark knowledge while keeping storage manageable.
 
-The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, scale-normalized logit matching, confidence- and margin-weighted teacher matching, Jensen-Shannon soft-target matching, top-k cache KL against the student's full-vocabulary distribution, hard CE, entropy diagnostics, and the blended loss used by the student notebook. Teacher-token rank diagnostics add top-k agreement, mean reciprocal rank, and mean rank so student imitation can be inspected beyond loss alone.
+The core loss pieces are also available in `scripts/distillation_losses.py` for small tests or standalone experiments. The helper implements prompt-token masking, temperature-scaled KL, adaptive per-token temperature, scale-normalized logit matching, confidence- and margin-weighted teacher matching, Jensen-Shannon soft-target matching, top-k cache KL against the student's full-vocabulary distribution, hard CE, and entropy diagnostics. Teacher-token rank diagnostics add top-k agreement, mean reciprocal rank, and mean rank so student imitation can be inspected beyond loss alone.
 
 The same helper includes a small linear schedule for `α` and `T`. A typical run can begin with more hard-label grounding, then increase the teacher KL weight once the student is stable. Linear CKA and a pairwise relational loss support intermediate-representation experiments even when the teacher and student use different hidden widths.
 
@@ -114,7 +114,7 @@ python scripts/calibration_metrics.py \
   --output reports/calibration_metrics.json
 ```
 
-The calibration report includes ECE, Brier score, area under the selective-risk curve, and risk at several retained-coverage levels.
+The calibration report includes fixed-width and equal-mass ECE, Brier score, area under the selective-risk curve, and risk at several retained-coverage levels. The training summary also reports recent train/validation slopes and flags plateaus, validation degradation, and possible overfitting.
 
 ## Notes
 
