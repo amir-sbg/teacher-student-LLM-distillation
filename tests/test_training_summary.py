@@ -19,6 +19,27 @@ def test_training_summary_tracks_best_validation_loss() -> None:
     assert report["best_validation_step"] == 2
     assert report["validation_gap"] == pytest.approx(0.6)
     assert report["avg_soft_loss"] == pytest.approx(0.3)
+    assert report["soft_to_hard_loss_ratio"] == pytest.approx(0.125)
+    assert report["recent_train_slope"] < 0
+    assert report["recent_validation_slope"] < 0
+    assert report["training_state"] == "improving"
+
+
+def test_training_summary_flags_diverging_validation() -> None:
+    report = summarize_training(
+        [
+            {"train_loss": 2.0, "eval_loss": 2.0},
+            {"train_loss": 1.8, "eval_loss": 2.1},
+            {"train_loss": 1.6, "eval_loss": 2.3},
+        ]
+    )
+
+    assert report["training_state"] == "possible_overfitting"
+
+
+def test_training_summary_validates_trend_window() -> None:
+    with pytest.raises(ValueError, match="trend_window"):
+        summarize_training([{"loss": 1.0}], trend_window=1)
 
 
 def test_load_metric_rows_supports_jsonl(tmp_path) -> None:
