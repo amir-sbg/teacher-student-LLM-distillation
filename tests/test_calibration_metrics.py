@@ -3,6 +3,7 @@ import json
 import pytest
 
 from scripts.calibration_metrics import (
+    adaptive_calibration_error,
     brier_score,
     expected_calibration_error,
     load_confidence_rows,
@@ -20,7 +21,21 @@ def test_expected_calibration_error_bins_predictions() -> None:
     assert report["ece"] > 0
     assert report["brier"] == brier_score([0.2, 0.4, 0.8, 1.0], [False, True, True, True])
     assert sum(row["count"] for row in report["bins"]) == 4
+    assert sum(row["count"] for row in report["adaptive_bins"]) == 4
     assert 0 <= report["aurc"] <= 1
+
+
+def test_adaptive_calibration_uses_balanced_bins() -> None:
+    report = adaptive_calibration_error(
+        confidences=[0.81, 0.85, 0.9, 0.92, 0.95, 0.97, 0.98],
+        correct=[False, True, True, False, True, True, True],
+        bins=3,
+    )
+
+    assert [row["count"] for row in report["bins"]] == [3, 2, 2]
+    assert report["bins"][0]["lower_confidence"] == 0.81
+    assert report["bins"][-1]["upper_confidence"] == 0.98
+    assert 0 <= report["adaptive_ece"] <= 1
 
 
 def test_calibration_rejects_bad_confidence() -> None:

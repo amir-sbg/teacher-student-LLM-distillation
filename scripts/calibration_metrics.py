@@ -48,12 +48,52 @@ def expected_calibration_error(
                 "gap": round(gap, 6),
             }
         )
+    adaptive = adaptive_calibration_error(confidences, correct, bins=bins)
     return {
         "ece": round(ece, 6),
+        "adaptive_ece": adaptive["adaptive_ece"],
         "brier": brier_score(confidences, correct),
         "aurc": selective_risk_curve(confidences, correct)["aurc"],
         "bins": rows,
+        "adaptive_bins": adaptive["bins"],
     }
+
+
+def adaptive_calibration_error(
+    confidences: list[float],
+    correct: list[bool],
+    bins: int = 10,
+) -> dict:
+    _validate_inputs(confidences, correct)
+    if bins < 1:
+        raise ValueError("bins must be positive")
+
+    ranked = sorted(zip(confidences, correct), key=lambda row: row[0])
+    effective_bins = min(bins, len(ranked))
+    base_size, remainder = divmod(len(ranked), effective_bins)
+    rows = []
+    offset = 0
+    adaptive_ece = 0.0
+    for index in range(effective_bins):
+        size = base_size + int(index < remainder)
+        members = ranked[offset : offset + size]
+        offset += size
+        avg_confidence = mean(confidence for confidence, _ in members)
+        accuracy = mean(float(is_correct) for _, is_correct in members)
+        gap = abs(avg_confidence - accuracy)
+        adaptive_ece += size / len(ranked) * gap
+        rows.append(
+            {
+                "bin": index,
+                "count": size,
+                "lower_confidence": round(members[0][0], 6),
+                "upper_confidence": round(members[-1][0], 6),
+                "confidence": round(avg_confidence, 6),
+                "accuracy": round(accuracy, 6),
+                "gap": round(gap, 6),
+            }
+        )
+    return {"adaptive_ece": round(adaptive_ece, 6), "bins": rows}
 
 
 def selective_risk_curve(
