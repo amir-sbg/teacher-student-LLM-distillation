@@ -159,6 +159,52 @@ def teacher_token_confidence(
     return (1.0 - entropy / maximum_entropy).clamp(0.0, 1.0)
 
 
+def teacher_adaptive_temperature(
+    teacher_logits: torch.Tensor,
+    min_temperature: float = 1.0,
+    max_temperature: float = 4.0,
+    confidence_power: float = 1.0,
+) -> torch.Tensor:
+    if min_temperature <= 0 or max_temperature <= 0:
+        raise ValueError("temperatures must be positive")
+    if min_temperature > max_temperature:
+        raise ValueError("min_temperature must not exceed max_temperature")
+    if confidence_power <= 0:
+        raise ValueError("confidence_power must be positive")
+
+    confidence = teacher_token_confidence(teacher_logits).pow(confidence_power)
+    return min_temperature + (max_temperature - min_temperature) * confidence
+
+
+def adaptive_temperature_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    min_temperature: float = 1.0,
+    max_temperature: float = 4.0,
+    confidence_power: float = 1.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("student and teacher logits must have the same shape")
+    if student_logits.ndim != 3:
+        raise ValueError("logits must have shape (batch, sequence, vocab)")
+
+    temperatures = teacher_adaptive_temperature(
+        teacher_logits,
+        min_temperature=min_temperature,
+        max_temperature=max_temperature,
+        confidence_power=confidence_power,
+    ).detach()
+    scaled_student = student_logits / temperatures.unsqueeze(-1)
+    scaled_teacher = teacher_logits / temperatures.unsqueeze(-1)
+    token_kl = F.kl_div(
+        F.log_softmax(scaled_student, dim=-1),
+        F.softmax(scaled_teacher, dim=-1),
+        reduction="none",
+    ).sum(dim=-1)
+    return masked_mean(token_kl * temperatures.square(), mask)
+
+
 def teacher_top2_margin(
     teacher_logits: torch.Tensor,
     temperature: float = 1.0,
@@ -485,6 +531,38 @@ def blended_confidence_distillation_loss(
         mask=mask,
         confidence_power=confidence_power,
         minimum_weight=minimum_weight,
+    )
+    ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
+    return {
+        "loss": alpha * kl + (1.0 - alpha) * ce,
+        "kl_loss": kl,
+        "ce_loss": ce,
+    }
+
+
+def blended_adaptive_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    labels: torch.Tensor,
+    alpha: float = 0.7,
+    min_temperature: float = 1.0,
+    max_temperature: float = 4.0,
+    confidence_power: float = 1.0,
+    mask: torch.Tensor | None = None,
+    ignore_index: int = -100,
+) -> dict[str, torch.Tensor]:
+    if not 0 <= alpha <= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if mask is None:
+        mask = labels.ne(ignore_index)
+
+    kl = adaptive_temperature_kl_loss(
+        student_logits,
+        teacher_logits,
+        min_temperature=min_temperature,
+        max_temperature=max_temperature,
+        confidence_power=confidence_power,
+        mask=mask,
     )
     ce = hard_ce_loss(student_logits, labels, ignore_index=ignore_index)
     return {

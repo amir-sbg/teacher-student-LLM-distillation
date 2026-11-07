@@ -2,6 +2,8 @@ import pytest
 import torch
 
 from scripts.distillation_losses import (
+    adaptive_temperature_kl_loss,
+    blended_adaptive_distillation_loss,
     blended_confidence_distillation_loss,
     blended_distillation_loss,
     blended_js_distillation_loss,
@@ -20,6 +22,7 @@ from scripts.distillation_losses import (
     teacher_token_confidence,
     teacher_top2_margin,
     teacher_rank_metrics,
+    teacher_adaptive_temperature,
     temperature_js_loss,
     topk_temperature_kl_loss,
     top1_agreement,
@@ -126,6 +129,27 @@ def test_teacher_confidence_tracks_distribution_sharpness() -> None:
 
     assert confidence[0, 0] > 0.9
     assert confidence[0, 1].item() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_adaptive_temperature_softens_confident_tokens_more() -> None:
+    logits = torch.tensor([[[8.0, 0.0, 0.0], [0.0, 0.0, 0.0]]])
+
+    temperature = teacher_adaptive_temperature(logits, 1.0, 4.0)
+
+    assert temperature[0, 0] > 3.5
+    assert temperature[0, 1].item() == pytest.approx(1.0, abs=1e-6)
+
+
+def test_adaptive_temperature_distillation_backpropagates() -> None:
+    teacher = torch.tensor([[[5.0, 0.0], [0.2, 0.1]]])
+    student = torch.tensor([[[0.0, 4.0], [0.0, 1.0]]], requires_grad=True)
+    labels = torch.tensor([[-100, 1]])
+
+    report = blended_adaptive_distillation_loss(student, teacher, labels, alpha=0.6)
+    report["loss"].backward()
+
+    assert adaptive_temperature_kl_loss(student, teacher).item() > 0
+    assert student.grad is not None
 
 
 def test_teacher_margin_separates_decisive_and_ambiguous_tokens() -> None:
