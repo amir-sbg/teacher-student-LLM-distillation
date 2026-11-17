@@ -17,6 +17,7 @@ from scripts.distillation_losses import (
     masked_mean,
     relational_similarity_loss,
     representation_alignment_loss,
+    reverse_temperature_kl_loss,
     soft_target_entropy,
     standardized_logit_kl_loss,
     teacher_token_confidence,
@@ -75,6 +76,26 @@ def test_temperature_kl_is_zero_for_matching_logits() -> None:
     loss = temperature_kl_loss(logits, logits, temperature=2.0, mask=mask)
 
     assert loss.item() == pytest.approx(0.0, abs=2e-7)
+
+
+def test_reverse_kl_is_zero_for_matching_distributions() -> None:
+    logits = torch.tensor([[[2.0, 0.5, -1.0], [0.0, 0.2, 0.8]]])
+
+    loss = reverse_temperature_kl_loss(logits, logits, temperature=2.5)
+
+    assert loss.item() == pytest.approx(0.0, abs=2e-7)
+
+
+def test_reverse_and_forward_kl_capture_different_penalties() -> None:
+    teacher = torch.tensor([[[4.0, 1.0, 0.0]]])
+    student = torch.tensor([[[1.0, 1.0, 1.0]]])
+
+    forward = temperature_kl_loss(student, teacher, temperature=1.0)
+    reverse = reverse_temperature_kl_loss(student, teacher, temperature=1.0)
+
+    assert forward > 0
+    assert reverse > 0
+    assert forward.item() != pytest.approx(reverse.item())
 
 
 def test_standardized_kl_ignores_logit_scale_and_offset() -> None:

@@ -70,6 +70,25 @@ def temperature_kl_loss(
     return masked_mean(token_kl, mask) * temperature**2
 
 
+def reverse_temperature_kl_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    temperature: float = 2.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Compute KL(student || teacher) to expose mode-seeking behavior."""
+
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if student_logits.shape != teacher_logits.shape or student_logits.ndim != 3:
+        raise ValueError("student and teacher logits must share (batch, sequence, vocab)")
+    student_log = F.log_softmax(student_logits / temperature, dim=-1)
+    teacher_log = F.log_softmax(teacher_logits / temperature, dim=-1)
+    student_probabilities = student_log.exp()
+    token_kl = (student_probabilities * (student_log - teacher_log)).sum(dim=-1)
+    return masked_mean(token_kl, mask) * temperature**2
+
+
 def standardized_logit_kl_loss(
     student_logits: torch.Tensor,
     teacher_logits: torch.Tensor,
