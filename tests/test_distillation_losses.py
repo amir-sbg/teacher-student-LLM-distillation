@@ -23,6 +23,7 @@ from scripts.distillation_losses import (
     teacher_token_confidence,
     teacher_top2_margin,
     teacher_rank_metrics,
+    teacher_mass_captured_at_k,
     teacher_adaptive_temperature,
     temperature_js_loss,
     topk_temperature_kl_loss,
@@ -96,6 +97,18 @@ def test_reverse_and_forward_kl_capture_different_penalties() -> None:
     assert forward > 0
     assert reverse > 0
     assert forward.item() != pytest.approx(reverse.item())
+
+
+def test_teacher_mass_captured_rewards_matching_top_tokens() -> None:
+    teacher = torch.tensor([[[5.0, 3.0, 0.0, -1.0]]])
+    aligned_student = torch.tensor([[[4.0, 2.0, 0.0, -2.0]]])
+    misaligned_student = torch.tensor([[[-2.0, 0.0, 2.0, 4.0]]])
+
+    aligned = teacher_mass_captured_at_k(aligned_student, teacher, k=2)
+    misaligned = teacher_mass_captured_at_k(misaligned_student, teacher, k=2)
+
+    assert aligned > 0.9
+    assert aligned > misaligned
 
 
 def test_standardized_kl_ignores_logit_scale_and_offset() -> None:

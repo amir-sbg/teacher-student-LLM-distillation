@@ -338,6 +338,26 @@ def teacher_rank_metrics(
     }
 
 
+def teacher_mass_captured_at_k(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    k: int = 5,
+    temperature: float = 1.0,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Measure teacher probability mass retained by the student's top-k set."""
+
+    if student_logits.shape != teacher_logits.shape or student_logits.ndim != 3:
+        raise ValueError("student and teacher logits must share (batch, sequence, vocab)")
+    if k < 1 or temperature <= 0:
+        raise ValueError("k and temperature must be positive")
+    effective_k = min(k, student_logits.shape[-1])
+    student_topk = student_logits.topk(effective_k, dim=-1).indices
+    teacher_probabilities = F.softmax(teacher_logits / temperature, dim=-1)
+    captured = torch.gather(teacher_probabilities, dim=-1, index=student_topk).sum(dim=-1)
+    return masked_mean(captured, mask)
+
+
 def linear_cka_similarity(
     student_hidden: torch.Tensor,
     teacher_hidden: torch.Tensor,
