@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 from pathlib import Path
 from statistics import mean
 
@@ -127,6 +128,44 @@ def selective_risk_curve(
     return {"aurc": round(mean(prefix_risks), 6), "points": rows}
 
 
+def bootstrap_calibration_interval(
+    confidences: list[float],
+    correct: list[bool],
+    bins: int = 10,
+    samples: int = 500,
+    confidence_level: float = 0.95,
+    seed: int = 42,
+) -> dict:
+    """Attach sampling uncertainty to ECE and Brier score estimates."""
+
+    _validate_inputs(confidences, correct)
+    if bins < 1 or samples < 2 or not 0 < confidence_level < 1:
+        raise ValueError("bins, samples, and confidence_level are outside their valid ranges")
+    rng = random.Random(seed)
+    ece_values = []
+    brier_values = []
+    for _ in range(samples):
+        indices = [rng.randrange(len(confidences)) for _ in confidences]
+        sampled_confidence = [confidences[index] for index in indices]
+        sampled_correct = [correct[index] for index in indices]
+        ece_values.append(expected_calibration_error(sampled_confidence, sampled_correct, bins)["ece"])
+        brier_values.append(brier_score(sampled_confidence, sampled_correct))
+    tail = (1.0 - confidence_level) / 2.0
+
+    def interval(values: list[float]) -> dict[str, float]:
+        ordered = sorted(values)
+        lower = ordered[max(0, math.floor(tail * (len(ordered) - 1)))]
+        upper = ordered[min(len(ordered) - 1, math.ceil((1.0 - tail) * (len(ordered) - 1)))]
+        return {"lower": round(lower, 6), "upper": round(upper, 6)}
+
+    return {
+        "samples": samples,
+        "confidence_level": confidence_level,
+        "ece": interval(ece_values),
+        "brier": interval(brier_values),
+    }
+
+
 def load_confidence_rows(path: Path) -> tuple[list[float], list[bool]]:
     rows = json.loads(path.read_text(encoding="utf-8")) if path.suffix == ".json" else _read_jsonl(path)
     confidences = []
@@ -156,10 +195,18 @@ def main() -> None:
     parser.add_argument("--input", type=Path, default=Path("reports/confidence_rows.jsonl"))
     parser.add_argument("--output", type=Path, default=Path("reports/calibration_metrics.json"))
     parser.add_argument("--bins", type=int, default=10)
+    parser.add_argument("--bootstrap-samples", type=int, default=500)
     args = parser.parse_args()
 
     confidences, correct = load_confidence_rows(args.input)
     report = expected_calibration_error(confidences, correct, bins=args.bins)
+    if args.bootstrap_samples >= 2:
+        report["bootstrap"] = bootstrap_calibration_interval(
+            confidences,
+            correct,
+            bins=args.bins,
+            samples=args.bootstrap_samples,
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))

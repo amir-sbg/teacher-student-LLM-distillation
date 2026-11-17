@@ -114,7 +114,7 @@ python scripts/calibration_metrics.py \
   --output reports/calibration_metrics.json
 ```
 
-The calibration report includes fixed-width and equal-mass ECE, Brier score, area under the selective-risk curve, and risk at several retained-coverage levels. The training summary also reports recent train/validation slopes and flags plateaus, validation degradation, and possible overfitting.
+The calibration report includes fixed-width and equal-mass ECE, bootstrap uncertainty for ECE and Brier score, area under the selective-risk curve, and risk at several retained-coverage levels. The training summary also reports recent train/validation slopes and flags plateaus, validation degradation, and possible overfitting.
 
 ## Notes
 

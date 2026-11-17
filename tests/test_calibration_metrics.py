@@ -5,6 +5,7 @@ import pytest
 from scripts.calibration_metrics import (
     adaptive_calibration_error,
     brier_score,
+    bootstrap_calibration_interval,
     expected_calibration_error,
     load_confidence_rows,
     selective_risk_curve,
@@ -66,3 +67,15 @@ def test_selective_risk_improves_when_errors_have_low_confidence() -> None:
     assert report["points"][0]["risk"] == 0.0
     assert report["points"][1]["risk"] == 0.5
     assert report["points"][0]["confidence_threshold"] == 0.85
+
+
+def test_bootstrap_calibration_interval_is_seeded() -> None:
+    confidences = [0.95, 0.8, 0.6, 0.3, 0.1]
+    correct = [True, True, False, True, False]
+
+    first = bootstrap_calibration_interval(confidences, correct, bins=3, samples=50, seed=8)
+    second = bootstrap_calibration_interval(confidences, correct, bins=3, samples=50, seed=8)
+
+    assert first == second
+    assert first["ece"]["lower"] <= first["ece"]["upper"]
+    assert first["brier"]["lower"] <= first["brier"]["upper"]
