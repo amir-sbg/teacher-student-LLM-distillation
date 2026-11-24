@@ -172,7 +172,13 @@ def load_confidence_rows(path: Path) -> tuple[list[float], list[bool]]:
     correct = []
     for row in rows:
         confidences.append(float(row["confidence"]))
-        correct.append(bool(row["correct"]))
+        value = row["correct"]
+        if isinstance(value, bool):
+            correct.append(value)
+        elif isinstance(value, int) and value in (0, 1):
+            correct.append(bool(value))
+        else:
+            raise ValueError("correct must be a boolean or 0/1 integer")
     return confidences, correct
 
 

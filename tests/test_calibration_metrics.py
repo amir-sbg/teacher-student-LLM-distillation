@@ -63,6 +63,14 @@ def test_load_confidence_rows_reads_jsonl(tmp_path) -> None:
     assert correct == [True]
 
 
+def test_load_confidence_rows_rejects_string_correctness(tmp_path) -> None:
+    path = tmp_path / "confidence.jsonl"
+    path.write_text(json.dumps({"confidence": 0.7, "correct": "false"}) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="boolean"):
+        load_confidence_rows(path)
+
+
 def test_selective_risk_improves_when_errors_have_low_confidence() -> None:
     report = selective_risk_curve(
         [0.95, 0.85, 0.4, 0.2],
