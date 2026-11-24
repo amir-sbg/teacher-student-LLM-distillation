@@ -181,8 +181,8 @@ def _validate_inputs(confidences: list[float], correct: list[bool]) -> None:
         raise ValueError("confidences and correct must have the same length")
     if not confidences:
         raise ValueError("at least one prediction is required")
-    if any(confidence < 0 or confidence > 1 for confidence in confidences):
-        raise ValueError("confidence values must be in [0, 1]")
+    if any(not math.isfinite(confidence) or confidence < 0 or confidence > 1 for confidence in confidences):
+        raise ValueError("confidence values must be finite and in [0, 1]")
 
 
 def _read_jsonl(path: Path) -> list[dict]:

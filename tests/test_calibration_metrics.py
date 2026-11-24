@@ -44,6 +44,12 @@ def test_calibration_rejects_bad_confidence() -> None:
         expected_calibration_error([1.2], [True])
 
 
+@pytest.mark.parametrize("confidence", [float("nan"), float("inf"), -float("inf")])
+def test_calibration_rejects_nonfinite_confidence(confidence: float) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        expected_calibration_error([confidence], [True])
+
+
 def test_load_confidence_rows_reads_jsonl(tmp_path) -> None:
     path = tmp_path / "confidence.jsonl"
     path.write_text(
