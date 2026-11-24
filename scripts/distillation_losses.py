@@ -459,8 +459,13 @@ def topk_temperature_kl_loss(
         raise ValueError("teacher top-k tensors must match the student batch and sequence shape")
     if teacher_topk_indices.numel() == 0:
         raise ValueError("teacher top-k tensors must not be empty")
+    if teacher_topk_indices.dtype not in (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64):
+        raise ValueError("teacher top-k token ids must be integers")
     if teacher_topk_indices.min().item() < 0 or teacher_topk_indices.max().item() >= student_logits.shape[-1]:
         raise ValueError("teacher_topk_indices contain ids outside the student vocabulary")
+    sorted_ids = teacher_topk_indices.sort(dim=-1).values
+    if torch.any(sorted_ids[..., 1:] == sorted_ids[..., :-1]):
+        raise ValueError("teacher top-k token ids must be distinct at each position")
 
     student_log_probabilities = F.log_softmax(student_logits / temperature, dim=-1)
     gathered_student_log = torch.gather(

@@ -79,6 +79,22 @@ def test_temperature_kl_is_zero_for_matching_logits() -> None:
     assert loss.item() == pytest.approx(0.0, abs=2e-7)
 
 
+def test_topk_loss_rejects_duplicate_teacher_token_ids() -> None:
+    student = torch.zeros((1, 1, 4))
+    ids = torch.tensor([[[1, 1]]])
+    logits = torch.tensor([[[2.0, 1.0]]])
+    with pytest.raises(ValueError, match="distinct"):
+        topk_temperature_kl_loss(student, ids, logits)
+
+
+def test_topk_loss_rejects_fractional_teacher_token_ids() -> None:
+    student = torch.zeros((1, 1, 4))
+    ids = torch.tensor([[[1.2, 2.0]]])
+    logits = torch.tensor([[[2.0, 1.0]]])
+    with pytest.raises(ValueError, match="integers"):
+        topk_temperature_kl_loss(student, ids, logits)
+
+
 def test_reverse_kl_is_zero_for_matching_distributions() -> None:
     logits = torch.tensor([[[2.0, 0.5, -1.0], [0.0, 0.2, 0.8]]])
 
